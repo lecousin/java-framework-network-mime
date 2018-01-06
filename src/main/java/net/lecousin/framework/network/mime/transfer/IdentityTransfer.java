@@ -171,20 +171,10 @@ public class IdentityTransfer extends TransferReceiver {
 					() -> {
 						sendNextBuffer(client, data, result);
 					},
-					(error) -> {
-						result.error(error);
-					},
-					(cancel) -> {
-						result.cancel(cancel);
-					}
+					result
 				);
 			},
-			(error) -> {
-				result.error(error);
-			},
-			(cancel) -> {
-				result.cancel(cancel);
-			}
+			result
 		);
 	}
 

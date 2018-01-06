@@ -184,7 +184,7 @@ public class ChunkedTransfer extends TransferReceiver {
 						chunkUsed = 0;
 					} else {
 						if (MIME.logger.isTraceEnabled())
-							MIME.logger.trace("Consume part of chunk: " + l + " bytes, no more data available");
+							MIME.logger.trace("Consume part of chunk: " + l + " bytes, " + chunkUsed + "/" + chunkSize + " consumed so far, no more data available");
 					}
 					ISynchronizationPoint<IOException> decode = decoder.decode(buf);
 					decode.listenInline(new Runnable() {

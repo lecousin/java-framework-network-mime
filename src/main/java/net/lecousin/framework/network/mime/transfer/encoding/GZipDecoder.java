@@ -17,9 +17,9 @@ public class GZipDecoder implements ContentDecoder {
 	/** Constructor. */
 	public GZipDecoder(ContentDecoder next) {
 		this.next = next;
-		tmpIO = new OutputToInputBuffers(false, 4, Task.PRIORITY_NORMAL);
+		tmpIO = new OutputToInputBuffers(true, 4, Task.PRIORITY_NORMAL);
 		gzip = new GZipReadable(tmpIO, Task.PRIORITY_NORMAL);
-		unzip();
+		unzip(null);
 	}
 	
 	private ContentDecoder next;
@@ -44,10 +44,10 @@ public class GZipDecoder implements ContentDecoder {
 		return done;
 	}
 	
-	private void unzip() {
+	private void unzip(ISynchronizationPoint<IOException> previous) {
 		ByteBuffer buffer = ByteBuffer.allocate(8192);
 		AsyncWork<Integer, IOException> unzip = gzip.readAsync(buffer);
-		unzip.listenAsync(new Task.Cpu<Void, NoException>("Transfer unzipped data to next content decoder", Task.PRIORITY_NORMAL) {
+		Task.Cpu<Void, NoException> task = new Task.Cpu<Void, NoException>("Transfer unzipped data to next content decoder", Task.PRIORITY_NORMAL) {
 			@Override
 			public Void run() {
 				if (unzip.hasError()) done.error(unzip.getError());
@@ -58,13 +58,16 @@ public class GZipDecoder implements ContentDecoder {
 						next.endOfData().listenInline(done);
 					else {
 						buffer.flip();
-						next.decode(buffer);
-						unzip();
+						unzip(next.decode(buffer));
 					}
 				}
 				return null;
 			}
-		}, true);
+		};
+		if (previous == null)
+			unzip.listenAsync(task, true);
+		else
+			previous.listenInline(() -> { unzip.listenAsync(task, true); });
 	}
 	
 }

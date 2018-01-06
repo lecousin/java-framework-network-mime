@@ -11,14 +11,19 @@ import java.util.List;
 import java.util.Map;
 
 import net.lecousin.framework.concurrent.CancelException;
+import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.synch.AsyncWork;
+import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
 import net.lecousin.framework.concurrent.synch.AsyncWork.AsyncWorkListener;
 import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.encoding.Base64;
 import net.lecousin.framework.io.encoding.QuotedPrintable;
+import net.lecousin.framework.network.TCPRemote;
 import net.lecousin.framework.network.client.TCPClient;
+import net.lecousin.framework.network.mime.transfer.ChunkedTransfer;
+import net.lecousin.framework.network.mime.transfer.IdentityTransfer;
 import net.lecousin.framework.network.mime.transfer.TransferEncodingFactory;
 import net.lecousin.framework.network.mime.transfer.TransferReceiver;
 import net.lecousin.framework.util.Pair;
@@ -360,10 +365,11 @@ public class MIME {
 	/**
 	 * Receive some data of the body, using the transfer initialized by the method
 	 * {@link #initBodyTransfer(net.lecousin.framework.io.IO.Writable)}.
+	 * True is returned if the end of the body has been reached.
 	 */
 	public AsyncWork<Boolean, IOException> bodyDataReady(ByteBuffer data) {
-		if (logger.isDebugEnabled())
-			logger.debug("Body data ready, consume it: " + data.remaining() + " bytes");
+		if (logger.isTraceEnabled())
+			logger.trace("Body data ready, consume it: " + data.remaining() + " bytes");
 		return bodyTransfer.consume(data);
 	}
 	
@@ -389,6 +395,8 @@ public class MIME {
 	public void setBodyToSend(IO.Readable body) {
 		this.bodyIn = body;
 	}
+	
+	// --- Receive ---
 	
 	/** Receive header lines from the given client. */
 	public SynchronizationPoint<IOException> readHeader(TCPClient client, int timeout) {
@@ -427,6 +435,47 @@ public class MIME {
 			}
 		});
 		return result;
+	}
+	
+	// --- Send ---
+	
+	public ISynchronizationPoint<IOException> send(TCPRemote remote) {
+		if (bodyIn == null) {
+			if (logger.isDebugEnabled())
+				logger.debug("Sending headers without body to " + remote);
+			setContentLength(0);
+			byte[] headers = generateHeaders(true).getBytes(StandardCharsets.US_ASCII);
+			return remote.send(ByteBuffer.wrap(headers));
+		}
+		if ((bodyIn instanceof IO.KnownSize) && !"chunked".equals(getHeaderSingleValue(MIME.TRANSFER_ENCODING))) {
+			SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
+			((IO.KnownSize)bodyIn).getSizeAsync().listenInline((size) -> {
+				new Task.Cpu.FromRunnable("Send MIME to " + remote, bodyIn.getPriority(), () -> {
+					if (logger.isDebugEnabled())
+						logger.debug("Sending headers with body of " + size.longValue() + " to " + remote);
+					setContentLength(size.longValue());
+					byte[] headers = generateHeaders(true).getBytes(StandardCharsets.US_ASCII);
+					ISynchronizationPoint<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headers));
+					sendHeaders.listenInline(() -> {
+						if (bodyIn instanceof IO.Readable.Buffered)
+							IdentityTransfer.send(remote, (IO.Readable.Buffered)bodyIn).listenInline(sp);
+						else
+							IdentityTransfer.send(remote, bodyIn, 65536, 3).listenInline(sp);
+					}, sp);
+				}).start();
+			}, sp);
+			return sp;
+		}
+		if (logger.isDebugEnabled())
+			logger.debug("Sending headers with chunked body to " + remote);
+		setHeader(TRANSFER_ENCODING, "chunked");
+		byte[] headers = generateHeaders(true).getBytes(StandardCharsets.US_ASCII);
+		ISynchronizationPoint<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headers));
+		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
+		sendHeaders.listenInline(() -> {
+			ChunkedTransfer.send(remote, bodyIn, 65536, 3).listenInline(sp);
+		}, sp);
+		return sp;
 	}
 	
 }
