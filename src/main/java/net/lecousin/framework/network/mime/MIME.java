@@ -473,7 +473,10 @@ public class MIME {
 		ISynchronizationPoint<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headers));
 		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
 		sendHeaders.listenInline(() -> {
-			ChunkedTransfer.send(remote, bodyIn, 65536, 3).listenInline(sp);
+			if (bodyIn instanceof IO.Readable.Buffered)
+				ChunkedTransfer.send(remote, (IO.Readable.Buffered)bodyIn).listenInline(sp);
+			else
+				ChunkedTransfer.send(remote, bodyIn, 65536, 3).listenInline(sp);
 		}, sp);
 		return sp;
 	}

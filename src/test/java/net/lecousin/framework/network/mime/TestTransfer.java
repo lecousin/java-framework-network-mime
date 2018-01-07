@@ -1,5 +1,6 @@
 package net.lecousin.framework.network.mime;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -10,6 +11,7 @@ import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
 import net.lecousin.framework.event.Listener;
+import net.lecousin.framework.io.FileIO;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
@@ -47,7 +49,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	
 	@SuppressWarnings("resource")
 	@Test(timeout=120000)
-	public void testIdentityTransfer() throws Exception {
+	public void testIdentityTransferBuffered() throws Exception {
 		TCPServer server = new TCPServer();
 		server.setProtocol(new TestTransferProtocol());
 		server.bind(new InetSocketAddress("localhost", 9999), 0);
@@ -86,10 +88,60 @@ public class TestTransfer extends AbstractNetworkTest {
 		client.close();
 	}
 
+	@SuppressWarnings("resource")
+	@Test(timeout=120000)
+	public void testIdentityTransferFromFile() throws Exception {
+		File file = File.createTempFile("test", "identitytransfer");
+		FileIO.WriteOnly out = new FileIO.WriteOnly(file, Task.PRIORITY_NORMAL);
+		out.writeSync(ByteBuffer.wrap(data));
+		out.close();
+		file.deleteOnExit();
+		FileIO.ReadOnly in = new FileIO.ReadOnly(file, Task.PRIORITY_NORMAL);
+		
+		TCPServer server = new TCPServer();
+		server.setProtocol(new TestTransferProtocol());
+		server.bind(new InetSocketAddress("localhost", 9999), 0);
+		MIME mime = new MIME();
+		mime.setHeader("X-Test", "Hello World");
+		mime.setBodyToSend(in);
+		TCPClient client = new TCPClient();
+		client.connect(new InetSocketAddress("localhost", 9999), 10000).blockThrow(0);
+		mime.send(client).blockThrow(0);
+		MIME answer = new MIME();
+		answer.readHeader(client, 10000).blockThrow(0);
+		Assert.assertEquals("Hello World", answer.getHeaderSingleValue("X-Test"));
+		ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
+		answer.initBodyTransfer(body);
+		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
+		client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
+			@Override
+			public void fire(ByteBuffer buf) {
+				System.out.println("Client received body data from server: " + buf.remaining());
+				Listener<ByteBuffer> that = this;
+				answer.bodyDataReady(buf).listenInline((end) -> {
+					if (end.booleanValue())
+						sp.unblock();
+					else
+						client.getReceiver().readAvailableBytes(16384, 10000).listenInline(that, sp);
+				}, sp);
+			}
+		}, sp);
+		sp.blockThrow(0);
+		Assert.assertEquals(data.length, body.getSizeSync());
+		body.seekSync(SeekType.FROM_BEGINNING, 0);
+		byte[] buf = new byte[data.length];
+		Assert.assertEquals(data.length, body.readFullySync(ByteBuffer.wrap(buf)));
+		Assert.assertArrayEquals(data, buf);
+		server.close();
+		client.close();
+		in.close();
+		file.delete();
+	}
+	
 	
 	@SuppressWarnings("resource")
 	@Test(timeout=120000)
-	public void testChunkedTransfer() throws Exception {
+	public void testChunkedTransferBuffered() throws Exception {
 		TCPServer server = new TCPServer();
 		server.setProtocol(new TestTransferProtocol());
 		server.bind(new InetSocketAddress("localhost", 9999), 0);
@@ -130,6 +182,59 @@ public class TestTransfer extends AbstractNetworkTest {
 		client.close();
 	}
 
+	@SuppressWarnings("resource")
+	@Test(timeout=120000)
+	public void testChunkedTransferFromFile() throws Exception {
+		File file = File.createTempFile("test", "identitytransfer");
+		FileIO.WriteOnly out = new FileIO.WriteOnly(file, Task.PRIORITY_NORMAL);
+		out.writeSync(ByteBuffer.wrap(data));
+		out.close();
+		file.deleteOnExit();
+		FileIO.ReadOnly in = new FileIO.ReadOnly(file, Task.PRIORITY_NORMAL);
+		
+		TCPServer server = new TCPServer();
+		server.setProtocol(new TestTransferProtocol());
+		server.bind(new InetSocketAddress("localhost", 9999), 0);
+		MIME mime = new MIME();
+		mime.setHeader("X-Test", "Hello World");
+		mime.setHeader(MIME.TRANSFER_ENCODING, "chunked");
+		mime.setBodyToSend(in);
+		TCPClient client = new TCPClient();
+		client.connect(new InetSocketAddress("localhost", 9999), 10000).blockThrow(0);
+		mime.send(client).blockThrow(0);
+		MIME answer = new MIME();
+		answer.readHeader(client, 10000).blockThrow(0);
+		Assert.assertEquals("Hello World", answer.getHeaderSingleValue("X-Test"));
+		Assert.assertEquals("chunked", answer.getHeaderSingleValue(MIME.TRANSFER_ENCODING));
+		ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
+		answer.initBodyTransfer(body);
+		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
+		client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
+			@Override
+			public void fire(ByteBuffer buf) {
+				System.out.println("Client received body data from server: " + buf.remaining());
+				Listener<ByteBuffer> that = this;
+				answer.bodyDataReady(buf).listenInline((end) -> {
+					if (end.booleanValue())
+						sp.unblock();
+					else
+						client.getReceiver().readAvailableBytes(16384, 10000).listenInline(that, sp);
+				}, sp);
+			}
+		}, sp);
+		sp.blockThrow(0);
+		Assert.assertEquals(data.length, body.getSizeSync());
+		body.seekSync(SeekType.FROM_BEGINNING, 0);
+		byte[] buf = new byte[data.length];
+		Assert.assertEquals(data.length, body.readFullySync(ByteBuffer.wrap(buf)));
+		Assert.assertArrayEquals(data, buf);
+		server.close();
+		client.close();
+		in.close();
+		file.delete();
+	}
+
+	
 	@SuppressWarnings("resource")
 	@Test(timeout=120000)
 	public void testGzip() throws Exception {

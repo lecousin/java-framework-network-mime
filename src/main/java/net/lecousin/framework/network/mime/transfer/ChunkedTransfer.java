@@ -257,10 +257,7 @@ public class ChunkedTransfer extends TransferReceiver {
 			
 			@Override
 			public void error(Exception error) {
-				if (error instanceof IOException)
-					result.error((IOException)error);
-				else
-					result.error(new IOException(error));
+				result.error(IO.error(error));
 			}
 			
 			@Override
@@ -280,10 +277,7 @@ public class ChunkedTransfer extends TransferReceiver {
 					
 					@Override
 					public void error(Exception error) {
-						if (error instanceof IOException)
-							result.error((IOException)error);
-						else
-							result.error(new IOException(error));
+						result.error(IO.error(error));
 					}
 					
 					@Override
@@ -320,17 +314,7 @@ public class ChunkedTransfer extends TransferReceiver {
 					if (MIME.logger.isTraceEnabled())
 						MIME.logger.trace("ChunkedTransfer.send from Buffered: Send final chunk to " + client);
 					ISynchronizationPoint<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
-					finalChunk.listenInline(
-						() -> {
-							result.unblock();
-						},
-						(error) -> {
-							result.error(error);
-						},
-						(cancel) -> {
-							result.cancel(cancel);
-						}
-					);
+					finalChunk.listenInline(result);
 					return;
 				}
 				new Task.Cpu<Void, NoException>("Send chunk of data to TCP Client", data.getPriority()) {
@@ -351,27 +335,14 @@ public class ChunkedTransfer extends TransferReceiver {
 						ISynchronizationPoint<IOException> sendProduct = client.send(buffer);
 						ISynchronizationPoint<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(MIME.CRLF));
 						JoinPoint.fromSynchronizationPointsSimilarError(sendHeader, sendProduct, sendEndOfChunk)
-							.listenInline(
-								() -> {
+							.listenInline(() -> {
 									sendNextBuffer(client, data, result, chunkHeader);
-								},
-								(error) -> {
-									result.error(error);
-								},
-								(cancel) -> {
-									result.cancel(cancel);
-								}
-							);
+							}, result);
 						return null;
 					}
 				}.start();
 			},
-			(error) -> {
-				result.error(error);
-			},
-			(cancel) -> {
-				result.cancel(cancel);
-			}
+			result
 		);
 	}
 	
