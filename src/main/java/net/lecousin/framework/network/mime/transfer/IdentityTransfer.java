@@ -115,10 +115,7 @@ public class IdentityTransfer extends TransferReceiver {
 					
 					@Override
 					public void error(Exception error) {
-						if (error instanceof IOException)
-							result.error((IOException)error);
-						else
-							result.error(new IOException(error));
+						result.error(IO.error(error));
 					}
 					
 					@Override
@@ -135,10 +132,7 @@ public class IdentityTransfer extends TransferReceiver {
 					
 					@Override
 					public void error(Exception error) {
-						if (error instanceof IOException)
-							result.error((IOException)error);
-						else
-							result.error(new IOException(error));
+						result.error(IO.error(error));
 					}
 					
 					@Override
