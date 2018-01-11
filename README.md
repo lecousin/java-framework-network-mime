@@ -9,7 +9,7 @@
 
 ![build status](https://travis-ci.org/lecousin/java-framework-network-mime.svg?branch=master "Build Status")
 ![build status](https://ci.appveyor.com/api/projects/status/github/lecousin/java-framework-network-mime?branch=master&svg=true "Build Status")
-[![Codecov](https://codecov.io/gh/lecousin/java-framework-network-core/graph/badge.svg)](https://codecov.io/gh/lecousin/java-framework-network-mime/branch/master)
+[![Codecov](https://codecov.io/gh/lecousin/java-framework-network-mime/graph/badge.svg)](https://codecov.io/gh/lecousin/java-framework-network-mime/branch/master)
 
 ### Next minor release - branch 0.2
 
