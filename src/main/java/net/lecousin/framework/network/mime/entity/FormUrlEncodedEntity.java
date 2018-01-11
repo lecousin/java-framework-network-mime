@@ -29,8 +29,25 @@ public class FormUrlEncodedEntity implements MimeEntity {
 		parameters.add(new Pair<>(name, value));
 	}
 	
+	/** Return the parameters. */
 	public List<Pair<String, String>> getParameters() {
 		return parameters;
+	}
+	
+	/** Return true if the parameter is present. */
+	public boolean hasParameter(String name) {
+		for (Pair<String, String> p : parameters)
+			if (p.getValue1().equals(name))
+				return true;
+		return false;
+	}
+	
+	/** Return the parameter or null if not present. */
+	public String getParameter(String name) {
+		for (Pair<String, String> p : parameters)
+			if (p.getValue1().equals(name))
+				return p.getValue2();
+		return null;
 	}
 
 	/** Parse the given source. */

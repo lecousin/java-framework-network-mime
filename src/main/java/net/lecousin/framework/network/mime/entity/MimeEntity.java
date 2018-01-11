@@ -30,6 +30,7 @@ public interface MimeEntity {
 			h.append("Content-Type: ").append(s).append("\r\n");
 		for (Pair<String, String> p : getAdditionalHeaders())
 			h.append(p.getValue1()).append(": ").append(p.getValue2()).append("\r\n");
+		h.append("\r\n");
 		byte[] header = h.toString().getBytes(StandardCharsets.US_ASCII);
 		return new LinkedIO.Readable.DeterminedSize("MIME", new IO.Readable[] {
 			new ByteArrayIO(header, "MIME Headers"),

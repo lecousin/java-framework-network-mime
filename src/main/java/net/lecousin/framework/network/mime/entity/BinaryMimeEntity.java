@@ -1,10 +1,12 @@
 package net.lecousin.framework.network.mime.entity;
 
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
 import net.lecousin.framework.io.IO;
+import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.util.Pair;
 
 /**
@@ -58,6 +60,15 @@ public class BinaryMimeEntity implements MimeEntity {
 			if (it.next().getValue1().equalsIgnoreCase(name))
 				it.remove();
 		}
+	}
+	
+	/** Create a BinaryMimeEntity from the given string. */
+	@SuppressWarnings("resource")
+	public static BinaryMimeEntity fromString(String content, Charset charset, String contentType) {
+		return new BinaryMimeEntity(
+			contentType + ";charset=" + charset.name(),
+			new ByteArrayIO(content.getBytes(charset), "MimeEntity from string")
+		);
 	}
 	
 }
