@@ -88,17 +88,20 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 	/** Part for a file. */
 	public static class PartFile implements MimeEntity {
 		/** Constructor. */
-		public PartFile(String fieldName, String filename, String contentType, IO.Readable content) {
+		public PartFile(String fieldName, String filename, String contentType, IO.Readable content, String... headers) {
 			this.fieldName = fieldName;
 			this.filename = filename;
 			this.contentType = contentType;
 			this.content = content;
+			for (int i = 0; i < headers.length - 1; i += 2)
+				this.headers.add(new Pair<>(headers[i], headers[i + 1]));
 		}
 		
 		protected String fieldName;
 		protected String filename;
 		protected String contentType;
 		protected IO.Readable content;
+		protected List<Pair<String, String>> headers = new LinkedList<>();
 		
 		public String getName() { return fieldName; }
 		
@@ -118,6 +121,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 				dispo.append(MIMEUtil.encodeUTF8HeaderParameterValue(filename));
 			}
 			headers.add(new Pair<>("Content-Disposition", dispo.toString()));
+			headers.addAll(this.headers);
 			return headers;
 		}
 		
@@ -133,8 +137,8 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 	}
 	
 	/** Append a file. */
-	public void addFile(String fieldName, String filename, String contentType, IO.Readable content) {
-		add(new PartFile(fieldName, filename, contentType, content));
+	public void addFile(String fieldName, String filename, String contentType, IO.Readable content, String... headers) {
+		add(new PartFile(fieldName, filename, contentType, content, headers));
 	}
 	
 	/** Return the fields contained in the form-data. */

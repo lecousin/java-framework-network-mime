@@ -1,14 +1,17 @@
 package net.lecousin.framework.network.mime;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Properties;
+import java.util.zip.Deflater;
 
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 
+import net.lecousin.compression.gzip.GZipWritable;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.Threading;
 import net.lecousin.framework.concurrent.synch.AsyncWork;
@@ -144,6 +147,12 @@ public class TestEntities extends LCCoreAbstractTest {
 		FormDataEntity form = new FormDataEntity();
 		form.addField("test", "1", StandardCharsets.US_ASCII);
 		form.addFile("myfile", "test.html", "text/html; charset=utf-8", new ByteArrayIO("<html></html>".getBytes(StandardCharsets.UTF_8), "test"));
+		ByteArrayIO gz = new ByteArrayIO(1024, "test");
+		GZipWritable gzip = new GZipWritable(gz, Task.PRIORITY_NORMAL, Deflater.BEST_COMPRESSION, 3);
+		gzip.writeSync(ByteBuffer.wrap("<html><body></body></html>".getBytes(StandardCharsets.UTF_8)));
+		gzip.finishSynch();
+		gz.seekSync(SeekType.FROM_BEGINNING, 0);
+		form.addFile("encoded", "test.html.gz", "text/html; charset=utf-8", gz, MIME.CONTENT_ENCODING, "gzip");
 		form.addField("hello", "world", StandardCharsets.UTF_8);
 		
 		ByteBuffersIO out = new ByteBuffersIO(false, "Form", Task.PRIORITY_NORMAL);
@@ -151,6 +160,7 @@ public class TestEntities extends LCCoreAbstractTest {
 		copy.blockThrow(0);
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 
+		@SuppressWarnings("resource")
 		FormDataEntity parse = new FormDataEntity(form.getBoundary());
 		parse.parse(out).blockThrow(0);
 		Assert.assertEquals(2, parse.getFields().size());
@@ -160,10 +170,16 @@ public class TestEntities extends LCCoreAbstractTest {
 		Assert.assertEquals("test.html", file.getFilename());
 		String content = IOUtil.readFullyAsStringSync(file.getReadableStream(), StandardCharsets.UTF_8);
 		Assert.assertEquals("<html></html>", content);
+		file = parse.getFile("encoded");
+		Assert.assertEquals("test.html.gz", file.getFilename());
+		content = IOUtil.readFullyAsStringSync(file.getReadableStream(), StandardCharsets.UTF_8);
+		Assert.assertEquals("<html><body></body></html>", content);
 		
 		form.close();
-		parse.close();
+		parse.closeAsync();
 		out.close();
+		gzip.close();
+		gz.close();
 	}
 	
 }
