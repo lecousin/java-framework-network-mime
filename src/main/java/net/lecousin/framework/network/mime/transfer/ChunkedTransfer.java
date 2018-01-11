@@ -184,7 +184,8 @@ public class ChunkedTransfer extends TransferReceiver {
 						chunkUsed = 0;
 					} else {
 						if (MIME.logger.isTraceEnabled())
-							MIME.logger.trace("Consume part of chunk: " + l + " bytes, " + chunkUsed + "/" + chunkSize + " consumed so far, no more data available");
+							MIME.logger.trace("Consume part of chunk: " + l + " bytes, "
+								+ chunkUsed + "/" + chunkSize + " consumed so far, no more data available");
 					}
 					ISynchronizationPoint<IOException> decode = decoder.decode(buf);
 					decode.listenInline(new Runnable() {
@@ -322,7 +323,8 @@ public class ChunkedTransfer extends TransferReceiver {
 					public Void run() {
 						int size = buffer.remaining();
 						if (MIME.logger.isTraceEnabled())
-							MIME.logger.trace("ChunkedTransfer.send from Buffered: Send chunk of " + size + " bytes to " + client);
+							MIME.logger.trace("ChunkedTransfer.send from Buffered: Send chunk of "
+								+ size + " bytes to " + client);
 						chunkHeader[0] = (byte)StringUtil.encodeHexaDigit((size & 0xF0000000) >> 28);
 						chunkHeader[1] = (byte)StringUtil.encodeHexaDigit((size & 0x0F000000) >> 24);
 						chunkHeader[2] = (byte)StringUtil.encodeHexaDigit((size & 0x00F00000) >> 20);

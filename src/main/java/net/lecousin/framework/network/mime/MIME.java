@@ -1,9 +1,7 @@
 package net.lecousin.framework.network.mime;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,13 +11,11 @@ import java.util.Map;
 import net.lecousin.framework.concurrent.CancelException;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.synch.AsyncWork;
-import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
 import net.lecousin.framework.concurrent.synch.AsyncWork.AsyncWorkListener;
+import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
 import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
-import net.lecousin.framework.io.encoding.Base64;
-import net.lecousin.framework.io.encoding.QuotedPrintable;
 import net.lecousin.framework.network.TCPRemote;
 import net.lecousin.framework.network.client.TCPClient;
 import net.lecousin.framework.network.mime.transfer.ChunkedTransfer;
@@ -129,131 +125,9 @@ public class MIME {
 		return false;
 	}
 	
-	/** Decode a header content using RFC 2047, which specifies encoded word as follows:
-	 * encoded-word = "=?" charset "?" encoding "?" encoded-text "?=".
-	 */
-	public static String decodeHeaderRFC2047(String value) throws IOException {
-		int pos = 0;
-		while (pos < value.length()) {
-			int i = value.indexOf("=?", pos);
-			int i2 = value.indexOf('"', pos);
-			if (i2 >= 0 && (i < 0 || i > i2)) {
-				int j = value.indexOf('"', i2 + 1);
-				if (j > 0) {
-					value = value.substring(0, i2) + value.substring(i2 + 1, j) + value.substring(j + 1);
-					continue;
-				}
-			}
-			if (i < 0) break;
-			int j = value.indexOf("?=", i + 2);
-			if (j < 0) break;
-			String decoded = decodeRFC2047Word(value.substring(i + 2, j));
-			value = value.substring(0, i) + decoded + value.substring(j + 2);
-			pos = i + decoded.length();
-		}
-		return value;
-	}
-
-	/** Decode a word based on RFC 2047 specification. */
-	public static String decodeRFC2047Word(String encodedWord) throws UnsupportedEncodingException, IOException {
-		int i = encodedWord.indexOf('?');
-		if (i < 0) return encodedWord;
-		String charsetName = encodedWord.substring(0, i);
-		encodedWord = encodedWord.substring(i + 1);
-		i = encodedWord.indexOf('?');
-		if (i < 0) return encodedWord;
-		String encoding = encodedWord.substring(0, i);
-		encodedWord = encodedWord.substring(i + 1);
-		encoding = encoding.trim().toUpperCase();
-		if ("B".equals(encoding)) {
-			byte[] decoded = Base64.decode(encodedWord);
-			return new String(decoded, charsetName);
-		} else if ("Q".equals(encoding)) {
-			ByteBuffer decoded = QuotedPrintable.decode(encodedWord);
-			return new String(decoded.array(), 0, decoded.remaining(), charsetName);
-		} else {
-			throw new UnsupportedEncodingException("RFC 2047 encoding " + encoding);
-		}
-	}
-	
-	/** Encode a header parameter value, taking bytes in UTF-8,
-	 * and depending on its content it may be directly returned,
-	 * it may use double-quote or it may use the RFC 2047 encoding. */
-	public static String encodeUTF8HeaderParameterValue(String value) {
-		return encodeHeaderParameterValue(value, StandardCharsets.UTF_8);
-	}
-
-	/** Encode a header parameter value, taking bytes in the given charset,
-	 * and depending on its content it may be directly returned,
-	 * it may use double-quote or it may use the RFC 2047 encoding. */
-	public static String encodeHeaderParameterValue(String value, Charset charset) {
-		byte[] bytes = value.getBytes(charset);
-		boolean hasSpecialChars = false;
-		for (int i = 0; i < bytes.length; ++i)
-			if (bytes[i] < 32 || bytes[i] > 126) {
-				hasSpecialChars = true;
-				break;
-			}
-		if (!hasSpecialChars) {
-			return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-		}
-		StringBuilder s = new StringBuilder(value.length() + 64);
-		s.append("=?UTF-8?B?");
-		s.append(new String(Base64.encodeBase64(bytes)));
-		s.append("?=");
-		return s.toString();
-	}
-	
 	/** Parse the given header field, using syntax "value; paramName=paramValue; anotherParam=anotherValue". */
 	public Pair<String, Map<String, String>> parseParameterizedHeaderSingleValue(String headerName) throws IOException {
-		String s = getHeaderSingleValue(headerName);
-		if (s == null) return null;
-		int i = s.indexOf(';');
-		if (i < 0)
-			return new Pair<>(s.trim(), new HashMap<>());
-		String firstValue = s.substring(0, i).trim();
-		firstValue = decodeHeaderRFC2047(firstValue);
-		s = s.substring(i + 1);
-		boolean inQuote = false;
-		boolean inValue = false;
-		Map<String, String> values = new HashMap<>();
-		StringBuilder name = new StringBuilder();
-		StringBuilder value = new StringBuilder();
-		for (i = 0; i < s.length(); ++i) {
-			char c = s.charAt(i);
-			if (inQuote) {
-				if (c == '\\') {
-					if (i < s.length() - 1)
-						c = s.charAt(++i);
-				} else if (c == '"') {
-					inQuote = false;
-					continue;
-				}
-			} else {
-				if (!inValue && c == '=') {
-					inValue = true;
-					continue;
-				}
-				if (c == ';') {
-					values.put(name.toString(), decodeHeaderRFC2047(value.toString()));
-					name = new StringBuilder();
-					value = new StringBuilder();
-					inValue = false;
-					continue;
-				}
-				if (c == ' ' && !inValue && name.length() == 0)
-					continue;
-				if (c == '"') {
-					inQuote = true;
-					continue;
-				}
-			}
-			if (inValue) value.append(c);
-			else name.append(c);
-		}
-		if (name.length() > 0 || value.length() > 0)
-			values.put(name.toString(), decodeHeaderRFC2047(value.toString()));
-		return new Pair<>(firstValue, values);
+		return MIMEUtil.parseParameterizedHeader(getHeaderSingleValue(headerName));
 	}
 	
 	/** Return the value of the Content-Length header field, or null. */
@@ -377,6 +251,7 @@ public class MIME {
 	public IO.Writable getBodyOutput() {
 		return bodyOut;
 	}
+	
 	/** Return the body previously set by {@link #initBodyTransfer(net.lecousin.framework.io.IO.Writable)}. */
 	public IO.Readable getBodyOutputAsInput() {
 		return (IO.Readable)bodyOut;
@@ -439,6 +314,7 @@ public class MIME {
 	
 	// --- Send ---
 	
+	/** Send this MIME to the given TCP connection. */
 	public ISynchronizationPoint<IOException> send(TCPRemote remote) {
 		if (bodyIn == null) {
 			if (logger.isDebugEnabled())

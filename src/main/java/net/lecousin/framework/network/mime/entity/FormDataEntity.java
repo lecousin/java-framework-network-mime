@@ -3,17 +3,17 @@ package net.lecousin.framework.network.mime.entity;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
 import net.lecousin.framework.concurrent.synch.AsyncWork;
 import net.lecousin.framework.io.IO;
-import net.lecousin.framework.io.LinkedIO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.IOInMemoryOrFile;
 import net.lecousin.framework.io.encoding.QuotedPrintable;
 import net.lecousin.framework.network.mime.MIME;
+import net.lecousin.framework.network.mime.MIMEUtil;
 import net.lecousin.framework.util.Pair;
 
 /** form-data entity, see RFC 2388. */
@@ -25,7 +25,7 @@ public class FormDataEntity extends MultipartEntity {
 	}
 	
 	/** Part for a field. */
-	public static class PartField implements Part {
+	public static class PartField implements MimeEntity {
 		/** Constructor. */
 		public PartField(String name, String value, Charset charset) {
 			this.name = name;
@@ -41,26 +41,28 @@ public class FormDataEntity extends MultipartEntity {
 		
 		public String getValue() { return value; }
 		
-		@SuppressWarnings("resource")
+		@Override
+		public String getContentType() {
+			return null;
+		}
+		
+		@Override
+		public List<Pair<String, String>> getAdditionalHeaders() {
+			ArrayList<Pair<String, String>> headers = new ArrayList<>(2);
+			headers.add(new Pair<>("Content-Disposition", "form-data; name=" + MIMEUtil.encodeHeaderParameterValue(name, charset)));
+			headers.add(new Pair<>("Content-Transfer-Encoding", "quoted-printable"));
+			return headers;
+		}
+		
 		@Override
 		public IO.Readable getReadableStream() {
-			StringBuilder s = new StringBuilder(256);
-			s.append("Content-Disposition: form-data; name=");
-			s.append(MIME.encodeHeaderParameterValue(name, charset));
-			s.append("\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n");
-			//s.append("\r\n\r\n");
-			byte[] header = s.toString().getBytes(StandardCharsets.US_ASCII);
-			s = null;
 			ByteBuffer content = QuotedPrintable.encode(value, charset);
-			return new LinkedIO.Readable.DeterminedSize("form-data field", new IO.Readable[] {
-				new ByteArrayIO(header, "form-data field header"),
-				new ByteArrayIO(content.array(), content.remaining(), "form-data field content")
-			});
+			return new ByteArrayIO(content.array(), content.remaining(), "form-data field content");
 		}
 	}
 	
 	/** Part for a file. */
-	public static class PartFile implements Part {
+	public static class PartFile implements MimeEntity {
 		/** Constructor. */
 		public PartFile(String fieldName, String filename, String contentType, IO.Readable content) {
 			this.fieldName = fieldName;
@@ -78,35 +80,26 @@ public class FormDataEntity extends MultipartEntity {
 		
 		public String getFilename() { return filename; }
 		
+		@Override
 		public String getContentType() { return contentType; }
 		
-		public IO.Readable getContent() { return content; }
-
-		@SuppressWarnings("resource")
+		@Override
+		public List<Pair<String, String>> getAdditionalHeaders() {
+			ArrayList<Pair<String, String>> headers = new ArrayList<>(1);
+			StringBuilder dispo = new StringBuilder(128);
+			dispo.append("form-data; name=");
+			dispo.append(MIMEUtil.encodeUTF8HeaderParameterValue(fieldName));
+			if (filename != null) {
+				dispo.append("; filename=");
+				dispo.append(MIMEUtil.encodeUTF8HeaderParameterValue(filename));
+			}
+			headers.add(new Pair<>("Content-Disposition", dispo.toString()));
+			return headers;
+		}
+		
 		@Override
 		public IO.Readable getReadableStream() {
-			StringBuilder s = new StringBuilder(256);
-			s.append("Content-Disposition: form-data; name=");
-			s.append(MIME.encodeUTF8HeaderParameterValue(fieldName));
-			if (filename != null) {
-				s.append("; filename=");
-				s.append(MIME.encodeUTF8HeaderParameterValue(filename));
-			}
-			s.append("\r\n");
-			if (contentType != null)
-				s.append("Content-Type: ").append(contentType).append("\r\n");
-			s.append("\r\n");
-			byte[] header = s.toString().getBytes(StandardCharsets.US_ASCII);
-			s = null;
-			if (content instanceof IO.KnownSize)
-				return new LinkedIO.Readable.DeterminedSize("form-data field", new IO.Readable[] {
-						new ByteArrayIO(header, "form-data field header"),
-						content
-					});
-			return new LinkedIO.Readable("form-data field", new IO.Readable[] {
-				new ByteArrayIO(header, "form-data field header"),
-				content
-			});
+			return content;
 		}
 	}
 	
@@ -123,14 +116,14 @@ public class FormDataEntity extends MultipartEntity {
 	/** Return the fields contained in the form-data. */
 	public List<Pair<String, String>> getFields() {
 		LinkedList<Pair<String, String>> list = new LinkedList<>();
-		for (Part p : parts)
+		for (MimeEntity p : parts)
 			if (p instanceof PartField)
 				list.add(new Pair<>(((PartField)p).getName(), ((PartField)p).getValue()));
 		return list;
 	}
 	
 	@Override
-	protected AsyncWork<Part, IOException> createPart(MIME headers, IOInMemoryOrFile body) {
+	protected AsyncWork<MimeEntity, IOException> createPart(MIME headers, IOInMemoryOrFile body) {
 		// TODO
 		return super.createPart(headers, body);
 	}

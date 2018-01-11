@@ -4,6 +4,8 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
@@ -22,9 +24,10 @@ import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.IOInMemoryOrFile;
 import net.lecousin.framework.io.buffering.SimpleBufferedReadable;
 import net.lecousin.framework.network.mime.MIME;
+import net.lecousin.framework.util.Pair;
 
 /** Multi-part entity, see RFC 1341. */
-public class MultipartEntity extends MimeEntity {
+public class MultipartEntity implements MimeEntity {
 
 	/** Constructor. */
 	@SuppressFBWarnings("EI_EXPOSE_REP2")
@@ -38,48 +41,13 @@ public class MultipartEntity extends MimeEntity {
 		this(generateBoundary(), subType);
 	}
 
-	/** Abstract class for a part in a multipart. */
-	public interface Part {
-		/** Get a Readable containing this entity. */
-		public IO.Readable getReadableStream();
-	}
-	
-	/** Generic implementation of a part. */ 
-	public static class GenericPart implements Part {
-		/** Constructor. */
-		public GenericPart(MIME header, IOInMemoryOrFile body) {
-			this.header = header;
-			this.body = body;
-		}
-		
-		protected MIME header;
-		protected IOInMemoryOrFile body;
-		
-		public MIME getHeader() {
-			return header;
-		}
-		
-		public IOInMemoryOrFile getBody() {
-			return body;
-		}
-		
-		@SuppressWarnings("resource")
-		@Override
-		public IO.Readable getReadableStream() {
-			byte[] header = this.header.generateHeaders(true).getBytes(StandardCharsets.US_ASCII);
-			return new LinkedIO.Readable.DeterminedSize("multipart", new IO.Readable[] {
-				new ByteArrayIO(header, "multipart header"),
-				body
-			});
-		}
-	}
-	
 	private static int counter = 0;
 	private static final Random random = new Random();
 	
 	protected String subType;
 	protected byte[] boundary;
-	protected LinkedList<Part> parts = new LinkedList<>();
+	protected LinkedList<MimeEntity> parts = new LinkedList<>();
+	protected List<Pair<String, String>> headers = new ArrayList<>();
 	
 	protected static byte[] generateBoundary() {
 		int count;
@@ -126,20 +94,44 @@ public class MultipartEntity extends MimeEntity {
 		return "multipart/" + subType + "; boundary=" + new String(boundary, StandardCharsets.US_ASCII);
 	}
 	
+	@Override
+	public List<Pair<String, String>> getAdditionalHeaders() {
+		return headers;
+	}
+	
+	/** Add a header. */
+	public void addHeader(String name, String value) {
+		headers.add(new Pair<>(name, value));
+	}
+	
+	/** Set a header. */
+	public void setHeader(String name, String value) {
+		removeHeader(name);
+		addHeader(name, value);
+	}
+	
+	/** Remove a header. */
+	public void removeHeader(String name) {
+		for (Iterator<Pair<String, String>> it = headers.iterator(); it.hasNext(); ) {
+			if (it.next().getValue1().equalsIgnoreCase(name))
+				it.remove();
+		}
+	}
+	
 	/** Append a part. */
-	public void add(Part part) {
+	public void add(MimeEntity part) {
 		parts.add(part);
 	}
 	
-	public List<Part> getParts() {
+	public List<MimeEntity> getParts() {
 		return parts;
 	}
 	
 	/** Return the parts compatible with the given type. */
 	@SuppressWarnings("unchecked")
-	public <T extends Part> List<T> getPartsOfType(Class<T> type) {
+	public <T extends MimeEntity> List<T> getPartsOfType(Class<T> type) {
 		LinkedList<T> list = new LinkedList<>();
-		for (Part p : parts)
+		for (MimeEntity p : parts)
 			if (type.isAssignableFrom(p.getClass()))
 				list.add((T)p);
 		return list;
@@ -158,9 +150,9 @@ public class MultipartEntity extends MimeEntity {
 		IO.Readable[] ios = new IO.Readable[parts.size() * 2 + 1];
 		int i = 0;
 		boolean allKnownSize = true;
-		for (Part p : parts) {
+		for (MimeEntity p : parts) {
 			ios[i++] = new SubIO.Readable.Seekable(boundaryIO, 0, bound.length, "Multipart boundary", false);
-			IO.Readable io = p.getReadableStream();
+			IO.Readable io = p.createIOWithHeaders();
 			ios[i++] = io;
 			if (!(io instanceof IO.KnownSize))
 				allKnownSize = false;
@@ -191,8 +183,9 @@ public class MultipartEntity extends MimeEntity {
 		return sp;
 	}
 	
-	protected AsyncWork<Part, IOException> createPart(MIME headers, IOInMemoryOrFile body) {
-		return new AsyncWork<>(new GenericPart(headers, body), null);
+	protected AsyncWork<MimeEntity, IOException> createPart(MIME headers, IOInMemoryOrFile body) {
+		headers.setBodyToSend(body);
+		return new AsyncWork<>(new GenericMimeEntity(headers), null);
 	}
 			
 	private class Parser {

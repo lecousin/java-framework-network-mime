@@ -7,6 +7,7 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -19,7 +20,7 @@ import net.lecousin.framework.io.text.BufferedReadableCharacterStream;
 import net.lecousin.framework.util.Pair;
 
 /** Form parameters using x-www-form-urlencoded format. */
-public class FormUrlEncodedEntity extends MimeEntity {
+public class FormUrlEncodedEntity implements MimeEntity {
 
 	protected List<Pair<String, String>> parameters = new LinkedList<>();
 	
@@ -97,6 +98,11 @@ public class FormUrlEncodedEntity extends MimeEntity {
 	@Override
 	public String getContentType() {
 		return "application/x-www-form-urlencoded; charset=utf-8";
+	}
+	
+	@Override
+	public List<Pair<String, String>> getAdditionalHeaders() {
+		return new ArrayList<>(0);
 	}
 	
 	@Override

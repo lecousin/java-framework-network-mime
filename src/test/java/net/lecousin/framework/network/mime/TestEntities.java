@@ -17,8 +17,6 @@ import net.lecousin.framework.io.buffering.ByteBuffersIO;
 import net.lecousin.framework.network.mime.entity.FormUrlEncodedEntity;
 import net.lecousin.framework.network.mime.entity.MimeEntity;
 import net.lecousin.framework.network.mime.entity.MultipartEntity;
-import net.lecousin.framework.network.mime.entity.MultipartEntity.GenericPart;
-import net.lecousin.framework.network.mime.entity.MultipartEntity.Part;
 import net.lecousin.framework.util.Pair;
 
 import org.junit.Assert;
@@ -83,22 +81,20 @@ public class TestEntities extends LCCoreAbstractTest {
 		SynchronizationPoint<IOException> parse = entity.parse(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL));
 		parse.blockThrow(0);
 		Assert.assertEquals(5, entity.getParts().size());
-		for (Part p : entity.getParts()) {
-			Assert.assertEquals(GenericPart.class, p.getClass());
-			GenericPart gp = (GenericPart)p;
-			Pair<String, Map<String,String>> dispo = gp.getHeader().parseParameterizedHeaderSingleValue("Content-Disposition");
+		for (MimeEntity p : entity.getParts()) {
+			Pair<String, Map<String,String>> dispo = MIMEUtil.parseParameterizedHeader(p.getHeaderSingleValue("Content-Disposition"));
 			Assert.assertEquals("form-data", dispo.getValue1());
 			String name = dispo.getValue2().get("name");
 			if ("name".equals(name)) {
-				Assert.assertEquals("AJ ONeal", IOUtil.readFullyAsStringSync(gp.getBody(), StandardCharsets.US_ASCII));
+				Assert.assertEquals("AJ ONeal", IOUtil.readFullyAsStringSync(p.getReadableStream(), StandardCharsets.US_ASCII));
 			} else if ("email".equals(name)) {
-				Assert.assertEquals("coolaj86@gmail.com", IOUtil.readFullyAsStringSync(gp.getBody(), StandardCharsets.US_ASCII));
+				Assert.assertEquals("coolaj86@gmail.com", IOUtil.readFullyAsStringSync(p.getReadableStream(), StandardCharsets.US_ASCII));
 			} else if ("avatar".equals(name)) {
 				// png
-				Assert.assertEquals("image/png", gp.getHeader().getContentType());
+				Assert.assertEquals("image/png", p.getContentType());
 			} else if ("attachments[]".equals(name)) {
 				// text
-				Assert.assertEquals("text/plain", gp.getHeader().getContentType());
+				Assert.assertEquals("text/plain", p.getContentType());
 			} else
 				throw new AssertionError("Unexpected multipart form-data name " + name);
 		}
