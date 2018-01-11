@@ -18,8 +18,11 @@ import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.IOAsInputStream;
 import net.lecousin.framework.io.IOFromInputStream;
 import net.lecousin.framework.io.IOUtil;
+import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
 import net.lecousin.framework.network.mime.entity.BinaryMimeEntity;
+import net.lecousin.framework.network.mime.entity.FormDataEntity;
+import net.lecousin.framework.network.mime.entity.FormDataEntity.PartFile;
 import net.lecousin.framework.network.mime.entity.FormUrlEncodedEntity;
 import net.lecousin.framework.network.mime.entity.MimeEntity;
 import net.lecousin.framework.network.mime.entity.MultipartEntity;
@@ -134,6 +137,33 @@ public class TestEntities extends LCCoreAbstractTest {
 		Assert.assertEquals(2, m.getCount());
 		Assert.assertEquals("Hello tester", m.getBodyPart(0).getContent());
 		Assert.assertEquals("<html><body>Hello tester</body></html>", m.getBodyPart(1).getContent());
+	}
+	
+	@Test(timeout=120000)
+	public void testFormData() throws Exception {
+		FormDataEntity form = new FormDataEntity();
+		form.addField("test", "1", StandardCharsets.US_ASCII);
+		form.addFile("myfile", "test.html", "text/html; charset=utf-8", new ByteArrayIO("<html></html>".getBytes(StandardCharsets.UTF_8), "test"));
+		form.addField("hello", "world", StandardCharsets.UTF_8);
+		
+		ByteBuffersIO out = new ByteBuffersIO(false, "Form", Task.PRIORITY_NORMAL);
+		AsyncWork<Long, IOException> copy = IOUtil.copy(form.getReadableStream(), out, -1, false, null, 0);
+		copy.blockThrow(0);
+		out.seekSync(SeekType.FROM_BEGINNING, 0);
+
+		FormDataEntity parse = new FormDataEntity(form.getBoundary());
+		parse.parse(out).blockThrow(0);
+		Assert.assertEquals(2, parse.getFields().size());
+		Assert.assertEquals("1", parse.getFieldValue("test"));
+		Assert.assertEquals("world", parse.getFieldValue("hello"));
+		PartFile file = parse.getFile("myfile");
+		Assert.assertEquals("test.html", file.getFilename());
+		String content = IOUtil.readFullyAsStringSync(file.getReadableStream(), StandardCharsets.UTF_8);
+		Assert.assertEquals("<html></html>", content);
+		
+		form.close();
+		parse.close();
+		out.close();
 	}
 	
 }

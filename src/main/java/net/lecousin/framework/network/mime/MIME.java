@@ -227,6 +227,7 @@ public class MIME {
 	 * {@link TransferEncodingFactory#create} method, which uses the Transfer-Encoding,
 	 * Content-Transfer-Encoding and Content-Encoding headers to decode data.
 	 * It returns true if no data is expected, false if data is expected.
+	 * If data is expected, calls to the method (@link {@link #bodyDataReady(ByteBuffer)} should be done.
 	 */
 	public <T extends IO.Writable & IO.Readable> boolean initBodyTransfer(T output) throws IOException {
 		bodyOut = output;

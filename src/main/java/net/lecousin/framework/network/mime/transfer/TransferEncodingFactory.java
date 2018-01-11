@@ -137,6 +137,41 @@ public final class TransferEncodingFactory {
 		}
 	}
 	
-	// TODO add other common types of transfer
+	/** Create a ContentDecoder for the Content-Encoding or Content-Transfer-Encoding field of the given MIME. */
+	public static ContentDecoder createDecoder(ContentDecoder next, MIME mime) {
+		LinkedList<String> encoding = new LinkedList<>();
+		String s = mime.getHeaderSingleValue(MIME.CONTENT_TRANSFER_ENCODING);
+		if (s != null) {
+			String[] list = s.split(",");
+			for (String e : list) {
+				e = e.trim().toLowerCase();
+				if (e.isEmpty()) continue;
+				encoding.add(e);
+			}
+			if (!encoding.isEmpty()) {
+				s = encoding.getLast();
+				if ("identity".equals(s))
+					encoding.removeLast();
+				else if ("chunked".equals(s)) {
+					encoding.removeLast();
+				}
+			}
+		}
+		
+		s = mime.getHeaderSingleValue(MIME.CONTENT_ENCODING);
+		if (s != null) {
+			String[] list = s.split(",");
+			for (String e : list) {
+				e = e.trim().toLowerCase();
+				if (e.isEmpty()) continue;
+				encoding.add(e);
+			}
+		}
+
+		for (String coding : encoding)
+			next = createDecoder(next, coding);
+		
+		return next;
+	}
 	
 }
