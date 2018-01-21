@@ -27,7 +27,6 @@ import net.lecousin.framework.util.Pair;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
-// skip checkstyle: AbbreviationAsWordInName
 /**
  * MIME message, with header and optional body.
  */

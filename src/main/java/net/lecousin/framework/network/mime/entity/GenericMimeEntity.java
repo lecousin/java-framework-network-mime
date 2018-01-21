@@ -8,7 +8,6 @@ import net.lecousin.framework.io.IO;
 import net.lecousin.framework.network.mime.MIME;
 import net.lecousin.framework.util.Pair;
 
-// skip checkstyle: AbbreviationAsWordInName
 /**
  * Generic implementation of MimeEntity, simply holding a {@link MIME} object.
  */

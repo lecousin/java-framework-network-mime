@@ -12,7 +12,6 @@ import net.lecousin.framework.io.encoding.Base64;
 import net.lecousin.framework.io.encoding.QuotedPrintable;
 import net.lecousin.framework.util.Pair;
 
-//skip checkstyle: AbbreviationAsWordInName
 /**
  * Utility methods for MIME, typically encoding and decoding headers.
  */
