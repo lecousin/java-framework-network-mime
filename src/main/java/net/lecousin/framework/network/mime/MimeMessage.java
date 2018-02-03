@@ -5,15 +5,16 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 
 import net.lecousin.framework.collections.LinkedArrayList;
 import net.lecousin.framework.concurrent.CancelException;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.synch.AsyncWork;
+import net.lecousin.framework.concurrent.synch.AsyncWork.AsyncWorkListener;
 import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
 import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
-import net.lecousin.framework.concurrent.synch.AsyncWork.AsyncWorkListener;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.LinkedIO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
@@ -61,6 +62,15 @@ public class MimeMessage {
 		return list;
 	}
 	
+	public <T extends HeaderValueFormat> List<T> getHeadersValues(String name, Class<T> format) throws Exception {
+		List<T> list = new LinkedList<>();
+		name = name.toLowerCase();
+		for (MimeHeader h : headers)
+			if (h.getNameLowerCase().equals(name))
+				list.add(h.getValue(format));
+		return list;
+	}
+	
 	public MimeHeader getFirstHeader(String name) {
 		name = name.toLowerCase();
 		for (MimeHeader h : headers)
@@ -94,12 +104,20 @@ public class MimeMessage {
 		}
 	}
 	
+	public boolean hasHeader(String name) {
+		return getFirstHeader(name) != null;
+	}
+	
 	public void addHeaderRaw(String name, String rawValue) {
 		headers.add(new MimeHeader(name, rawValue));
 	}
 	
 	public void addHeader(String name, HeaderValueFormat value) {
 		headers.add(new MimeHeader(name, value));
+	}
+	
+	public void addHeader(MimeHeader header) {
+		headers.add(header);
 	}
 	
 	public void setHeaderRaw(String name, String rawValue) {
@@ -110,6 +128,11 @@ public class MimeMessage {
 	public void setHeader(String name, HeaderValueFormat value) {
 		removeHeaders(name);
 		addHeader(name, value);
+	}
+	
+	public void setHeader(MimeHeader header) {
+		removeHeaders(header.getName());
+		addHeader(header);
 	}
 	
 	public void removeHeaders(String name) {
