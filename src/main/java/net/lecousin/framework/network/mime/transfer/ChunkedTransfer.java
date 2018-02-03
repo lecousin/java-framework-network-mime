@@ -17,7 +17,7 @@ import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.util.IOReaderAsProducer;
 import net.lecousin.framework.network.TCPRemote;
-import net.lecousin.framework.network.mime.MIME;
+import net.lecousin.framework.network.mime.MimeMessage;
 import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
 import net.lecousin.framework.util.StringUtil;
 
@@ -33,7 +33,7 @@ public class ChunkedTransfer extends TransferReceiver {
 	public static final byte[] FINAL_CHUNK = new byte[] { '0', '\r', '\n', '\r', '\n' };
 	
 	/** Constructor. */
-	public ChunkedTransfer(MIME mime, ContentDecoder decoder) {
+	public ChunkedTransfer(MimeMessage mime, ContentDecoder decoder) {
 		super(mime, decoder);
 	}
 	
@@ -71,15 +71,15 @@ public class ChunkedTransfer extends TransferReceiver {
 		public Void run() {
 			while (true) {
 				if (!buf.hasRemaining()) {
-					if (MIME.logger.isTraceEnabled())
-						MIME.logger.trace("End of chunck data consumed, wait for more data");
+					if (MimeMessage.logger.isTraceEnabled())
+						MimeMessage.logger.trace("End of chunck data consumed, wait for more data");
 					ondone.unblockSuccess(Boolean.FALSE);
 					return null;
 				}
 				if (needSize) {
 					int i = buf.get() & 0xFF;
-					if (MIME.logger.isTraceEnabled())
-						MIME.logger.trace("Chunk size character: " + ((char)i)
+					if (MimeMessage.logger.isTraceEnabled())
+						MimeMessage.logger.trace("Chunk size character: " + ((char)i)
 							+ " (" + i + "), so far size is: " + chunkSize);
 					if (chunkSizeChars == 8) {
 						// already get the 8 characters
@@ -101,16 +101,16 @@ public class ChunkedTransfer extends TransferReceiver {
 					}
 					if (chunkSize < 0 && (i == '\r' || i == '\n')) continue;
 					if (i == ';') {
-						if (MIME.logger.isTraceEnabled())
-							MIME.logger.trace("Start chunk extension");
+						if (MimeMessage.logger.isTraceEnabled())
+							MimeMessage.logger.trace("Start chunk extension");
 						chunkSizeDone = true;
 						chunkExtension = true;
 						continue;
 					}
 					if (i == '\n') {
 						// end of chunk line
-						if (MIME.logger.isTraceEnabled())
-							MIME.logger.trace("End of chunk line, chunk size is " + chunkSize);
+						if (MimeMessage.logger.isTraceEnabled())
+							MimeMessage.logger.trace("End of chunk line, chunk size is " + chunkSize);
 						needSize = false;
 						chunkSizeDone = false;
 						chunkExtension = false;
@@ -128,15 +128,15 @@ public class ChunkedTransfer extends TransferReceiver {
 					if (chunkSizeDone) continue;
 					if (i == 0x0D || i == 0x20) {
 						// end of chunk size
-						if (MIME.logger.isTraceEnabled())
-							MIME.logger.trace("end of chunk size, wait for end of line");
+						if (MimeMessage.logger.isTraceEnabled())
+							MimeMessage.logger.trace("end of chunk size, wait for end of line");
 						chunkSizeDone = true;
 						continue;
 					}
 					int isize = StringUtil.decodeHexa((char)i);
 					if (isize == -1) {
-						if (MIME.logger.isErrorEnabled())
-							MIME.logger.error("Invalid chunk size: character '" + (char)i 
+						if (MimeMessage.logger.isErrorEnabled())
+							MimeMessage.logger.error("Invalid chunk size: character '" + (char)i 
 								+ "' is not a valid hexadecimal character.");
 						ondone.unblockError(new IOException("Invalid chunk size"));
 						return null;
@@ -160,8 +160,8 @@ public class ChunkedTransfer extends TransferReceiver {
 						chunkSizeChars = 0;
 						chunkUsed = 0;
 					}
-					if (MIME.logger.isTraceEnabled())
-						MIME.logger.trace("Consume end of chunk: " + nb + " bytes, data still available after");
+					if (MimeMessage.logger.isTraceEnabled())
+						MimeMessage.logger.trace("Consume end of chunk: " + nb + " bytes, data still available after");
 					ISynchronizationPoint<IOException> decode = decoder.decode(buf);
 					decode.listenInline(new Runnable() {
 						@Override
@@ -176,15 +176,15 @@ public class ChunkedTransfer extends TransferReceiver {
 				} else {
 					chunkUsed += l;
 					if (chunkUsed == chunkSize) {
-						if (MIME.logger.isTraceEnabled())
-							MIME.logger.trace("Consume end of chunk: " + l + " bytes, no more data available");
+						if (MimeMessage.logger.isTraceEnabled())
+							MimeMessage.logger.trace("Consume end of chunk: " + l + " bytes, no more data available");
 						needSize = true;
 						chunkSize = -1;
 						chunkSizeChars = 0;
 						chunkUsed = 0;
 					} else {
-						if (MIME.logger.isTraceEnabled())
-							MIME.logger.trace("Consume part of chunk: " + l + " bytes, "
+						if (MimeMessage.logger.isTraceEnabled())
+							MimeMessage.logger.trace("Consume part of chunk: " + l + " bytes, "
 								+ chunkUsed + "/" + chunkSize + " consumed so far, no more data available");
 					}
 					ISynchronizationPoint<IOException> decode = decoder.decode(buf);
@@ -216,12 +216,12 @@ public class ChunkedTransfer extends TransferReceiver {
 					return new AsyncWork<Void,IOException>(null, null);
 				}
 				int size = product.remaining();
-				if (MIME.logger.isTraceEnabled())
-					MIME.logger.trace("ChunkedTransfer.send from Readable: send chunk of " + size);
+				if (MimeMessage.logger.isTraceEnabled())
+					MimeMessage.logger.trace("ChunkedTransfer.send from Readable: send chunk of " + size);
 				ByteBuffer header = ByteBuffer.wrap((Integer.toHexString(size) + "\r\n").getBytes(StandardCharsets.US_ASCII));
 				ISynchronizationPoint<IOException> sendHeader = client.send(header);
 				ISynchronizationPoint<IOException> sendProduct = client.send(product);
-				ISynchronizationPoint<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(MIME.CRLF));
+				ISynchronizationPoint<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK, 1, 2));
 				AsyncWork<Void,IOException> chunk = new AsyncWork<>();
 				sendEndOfChunk.listenInline(() -> {
 					if (sendHeader.hasError()) chunk.error(sendHeader.getError());
@@ -237,8 +237,8 @@ public class ChunkedTransfer extends TransferReceiver {
 			
 			@Override
 			public AsyncWork<Void, IOException> endOfProduction() {
-				if (MIME.logger.isTraceEnabled())
-					MIME.logger.trace("ChunkedTransfer.send from Readable: send final chunk");
+				if (MimeMessage.logger.isTraceEnabled())
+					MimeMessage.logger.trace("ChunkedTransfer.send from Readable: send final chunk");
 				ISynchronizationPoint<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
 				AsyncWork<Void, IOException> end = new AsyncWork<>();
 				finalChunk.listenInline(() -> {
@@ -312,8 +312,8 @@ public class ChunkedTransfer extends TransferReceiver {
 			(buffer) -> {
 				if (buffer == null) {
 					// send final chunk
-					if (MIME.logger.isTraceEnabled())
-						MIME.logger.trace("ChunkedTransfer.send from Buffered: Send final chunk to " + client);
+					if (MimeMessage.logger.isTraceEnabled())
+						MimeMessage.logger.trace("ChunkedTransfer.send from Buffered: Send final chunk to " + client);
 					ISynchronizationPoint<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
 					finalChunk.listenInline(result);
 					return;
@@ -322,8 +322,8 @@ public class ChunkedTransfer extends TransferReceiver {
 					@Override
 					public Void run() {
 						int size = buffer.remaining();
-						if (MIME.logger.isTraceEnabled())
-							MIME.logger.trace("ChunkedTransfer.send from Buffered: Send chunk of "
+						if (MimeMessage.logger.isTraceEnabled())
+							MimeMessage.logger.trace("ChunkedTransfer.send from Buffered: Send chunk of "
 								+ size + " bytes to " + client);
 						chunkHeader[0] = (byte)StringUtil.encodeHexaDigit((size & 0xF0000000) >> 28);
 						chunkHeader[1] = (byte)StringUtil.encodeHexaDigit((size & 0x0F000000) >> 24);
@@ -335,7 +335,7 @@ public class ChunkedTransfer extends TransferReceiver {
 						chunkHeader[7] = (byte)StringUtil.encodeHexaDigit((size & 0x0000000F));
 						ISynchronizationPoint<IOException> sendHeader = client.send(ByteBuffer.wrap(chunkHeader));
 						ISynchronizationPoint<IOException> sendProduct = client.send(buffer);
-						ISynchronizationPoint<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(MIME.CRLF));
+						ISynchronizationPoint<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK, 1, 2));
 						JoinPoint.fromSynchronizationPointsSimilarError(sendHeader, sendProduct, sendEndOfChunk)
 							.listenInline(() -> {
 									sendNextBuffer(client, data, result, chunkHeader);

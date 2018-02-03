@@ -4,8 +4,6 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
@@ -23,31 +21,60 @@ import net.lecousin.framework.io.SubIO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.IOInMemoryOrFile;
 import net.lecousin.framework.io.buffering.SimpleBufferedReadable;
-import net.lecousin.framework.network.mime.MIME;
-import net.lecousin.framework.util.Pair;
+import net.lecousin.framework.network.mime.MimeHeader;
+import net.lecousin.framework.network.mime.MimeMessage;
+import net.lecousin.framework.network.mime.MimeUtil;
+import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 
 /** Multi-part entity, see RFC 1341. */
-public class MultipartEntity implements MimeEntity {
+public class MultipartEntity extends MimeEntity {
 
 	/** Constructor. */
 	@SuppressFBWarnings("EI_EXPOSE_REP2")
 	public MultipartEntity(byte[] boundary, String subType) {
 		this.boundary = boundary;
-		this.subType = subType;
+		setHeader(CONTENT_TYPE,
+			new ParameterizedHeaderValue("multipart/" + subType,
+				"boundary", new String(boundary, StandardCharsets.US_ASCII)));
 	}
 	
 	/** Constructor. */
 	public MultipartEntity(String subType) {
 		this(generateBoundary(), subType);
 	}
+	
+	protected MultipartEntity(MimeMessage mime) throws Exception {
+		super(mime);
+		ParameterizedHeaderValue ct = mime.getContentType();
+		if (ct == null)
+			throw new Exception("Missing Content-Type header");
+		String s = ct.getParameterIgnoreCase("boundary");
+		if (s == null)
+			throw new Exception("No boundary specified in Content-Type header");
+		this.boundary = s.getBytes(StandardCharsets.US_ASCII);
+	}
+	
+	@SuppressWarnings("resource")
+	public static AsyncWork<MultipartEntity, Exception> from(MimeMessage mime) {
+		MultipartEntity entity;
+		try { entity = new MultipartEntity(mime); }
+		catch (Exception e) { return new AsyncWork<>(null, e); }
+		
+		IO.Readable body = mime.getBodyReceivedAsInput();
+		if (body == null)
+			return new AsyncWork<>(entity, null);
+		SynchronizationPoint<IOException> parse = entity.parse(body);
+		AsyncWork<MultipartEntity, Exception> result = new AsyncWork<>();
+		parse.listenInlineSP(() -> { result.unblockSuccess(entity); }, result);
+		parse.listenInline(() -> { body.closeAsync(); });
+		return result;
+	}
 
 	private static int counter = 0;
 	private static final Random random = new Random();
 	
-	protected String subType;
 	protected byte[] boundary;
-	protected LinkedList<MimeEntity> parts = new LinkedList<>();
-	protected List<Pair<String, String>> headers = new ArrayList<>();
+	protected LinkedList<MimeMessage> parts = new LinkedList<>();
 	
 	protected static byte[] generateBoundary() {
 		int count;
@@ -89,49 +116,20 @@ public class MultipartEntity implements MimeEntity {
 		return boundary;
 	}
 	
-	@Override
-	public String getContentType() {
-		return "multipart/" + subType + "; boundary=" + new String(boundary, StandardCharsets.US_ASCII);
-	}
-	
-	@Override
-	public List<Pair<String, String>> getAdditionalHeaders() {
-		return headers;
-	}
-	
-	/** Add a header. */
-	public void addHeader(String name, String value) {
-		headers.add(new Pair<>(name, value));
-	}
-	
-	/** Set a header. */
-	public void setHeader(String name, String value) {
-		removeHeader(name);
-		addHeader(name, value);
-	}
-	
-	/** Remove a header. */
-	public void removeHeader(String name) {
-		for (Iterator<Pair<String, String>> it = headers.iterator(); it.hasNext(); ) {
-			if (it.next().getValue1().equalsIgnoreCase(name))
-				it.remove();
-		}
-	}
-	
 	/** Append a part. */
-	public void add(MimeEntity part) {
+	public void add(MimeMessage part) {
 		parts.add(part);
 	}
 	
-	public List<MimeEntity> getParts() {
+	public List<MimeMessage> getParts() {
 		return parts;
 	}
 	
 	/** Return the parts compatible with the given type. */
 	@SuppressWarnings("unchecked")
-	public <T extends MimeEntity> List<T> getPartsOfType(Class<T> type) {
+	public <T extends MimeMessage> List<T> getPartsOfType(Class<T> type) {
 		LinkedList<T> list = new LinkedList<>();
-		for (MimeEntity p : parts)
+		for (MimeMessage p : parts)
 			if (type.isAssignableFrom(p.getClass()))
 				list.add((T)p);
 		return list;
@@ -139,7 +137,7 @@ public class MultipartEntity implements MimeEntity {
 	
 	@SuppressWarnings("resource")
 	@Override
-	public IO.Readable getReadableStream() {
+	public IO.Readable getBodyToSend() {
 		byte[] bound = new byte[6 + boundary.length];
 		bound[0] = bound[boundary.length + 4] = '\r';
 		bound[1] = bound[boundary.length + 5] = '\n';
@@ -150,9 +148,9 @@ public class MultipartEntity implements MimeEntity {
 		IO.Readable[] ios = new IO.Readable[parts.size() * 2 + 1];
 		int i = 0;
 		boolean allKnownSize = true;
-		for (MimeEntity p : parts) {
+		for (MimeMessage p : parts) {
 			ios[i++] = new SubIO.Readable.Seekable(boundaryIO, 0, bound.length, "Multipart boundary", false);
-			IO.Readable io = p.createIOWithHeaders();
+			IO.Readable io = p.getReadableStream();
 			ios[i++] = io;
 			if (!(io instanceof IO.KnownSize))
 				allKnownSize = false;
@@ -183,9 +181,11 @@ public class MultipartEntity implements MimeEntity {
 		return sp;
 	}
 	
-	protected AsyncWork<MimeEntity, IOException> createPart(MIME headers, IOInMemoryOrFile body) {
-		headers.setBodyToSend(body);
-		return new AsyncWork<>(new GenericMimeEntity(headers), null);
+	protected AsyncWork<MimeMessage, IOException> createPart(List<MimeHeader> headers, IOInMemoryOrFile body) {
+		MimeMessage mime = new MimeMessage();
+		mime.getHeaders().addAll(headers);
+		mime.setBodyToSend(body);
+		return new AsyncWork<>(mime, null);
 	}
 			
 	private class Parser {
@@ -200,7 +200,7 @@ public class MultipartEntity implements MimeEntity {
 		private byte[] boundaryRead = null;
 		private int boundaryPos = 0;
 		private boolean firstBoundary = true;
-		private MIME header = null;
+		private MimeUtil.HeadersLinesReceiver header = null;
 		private StringBuilder headerLine = null;
 		private IOInMemoryOrFile body = null;
 		private byte[] bodyBuffer = new byte[1024];
@@ -226,13 +226,22 @@ public class MultipartEntity implements MimeEntity {
 						if (header != null && body == null) {
 							// reading MIME header
 							if (b == '\n') {
-								String line = headerLine.toString().trim();
+								String line;
+								if (headerLine.length() > 0 && headerLine.charAt(headerLine.length() - 1) == '\r')
+									line = headerLine.substring(0, headerLine.length() - 1);
+								else
+									line = headerLine.toString();
+								try { header.newLine(line); }
+								catch (Exception e) {
+									sp.error(IO.error(e));
+									return null;
+								}
 								if (line.length() == 0) {
 									// end of MIME headers
+									headerLine = null;
 									body = new IOInMemoryOrFile(8192, io.getPriority(), "Multipart body");
 									continue;
 								}
-								header.appendHeaderLine(line);
 								headerLine = new StringBuilder(128);
 								continue;
 							}
@@ -315,7 +324,7 @@ public class MultipartEntity implements MimeEntity {
 									return null;
 								}
 								// expecting next header
-								header = new MIME();
+								header = new MimeUtil.HeadersLinesReceiver(new LinkedList<>());
 								headerLine = new StringBuilder(128);
 								body = null;
 								bodyBufferPos = 0;
@@ -392,12 +401,12 @@ public class MultipartEntity implements MimeEntity {
 			}
 			// then we create the part
 			body.seekSync(SeekType.FROM_BEGINNING, 0);
-			MultipartEntity.this.createPart(header, body).listenInline(
+			MultipartEntity.this.createPart(header.getHeaders(), body).listenInline(
 				(part) -> {
 					parts.add(part);
 					if (buffer != null) {
 						// expecting next header
-						header = new MIME();
+						header = new MimeUtil.HeadersLinesReceiver(new LinkedList<>());
 						headerLine = new StringBuilder(128);
 						body = null;
 						bodyBufferPos = 0;

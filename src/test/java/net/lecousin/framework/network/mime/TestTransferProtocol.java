@@ -32,9 +32,9 @@ public class TestTransferProtocol implements ServerProtocol {
 			@SuppressWarnings("resource")
 			@Override
 			public Void run() {
-				MIME mime = (MIME)client.getAttribute("mime");
+				MimeMessage mime = (MimeMessage)client.getAttribute("mime");
 				if (mime == null) {
-					mime = new MIME();
+					mime = new MimeMessage();
 					client.setAttribute("mime", mime);
 				}
 				ByteBuffersIO body = (ByteBuffersIO)client.getAttribute("body");
@@ -42,15 +42,30 @@ public class TestTransferProtocol implements ServerProtocol {
 					receiveBody(client, mime, body, data, onbufferavailable);
 					return null;
 				}
+				MimeUtil.HeadersLinesReceiver linesReceiver = (MimeUtil.HeadersLinesReceiver)client.getAttribute("mime_lines");
+				if (linesReceiver == null) {
+					linesReceiver = new MimeUtil.HeadersLinesReceiver(mime.getHeaders());
+					client.setAttribute("mime_lines", linesReceiver);
+				}
 				StringBuilder line = (StringBuilder)client.getAttribute("mime_line");
 				if (line == null) {
-					line = new StringBuilder();
+					line = new StringBuilder(128);
 					client.setAttribute("mime_line", line);
 				}
 				while (data.hasRemaining()) {
 					byte b = data.get();
 					if (b == '\n') {
-						String s = line.toString().trim();
+						String s;
+						if (line.length() > 0 && line.charAt(line.length() - 1) == '\r')
+							s = line.substring(0, line.length() - 1);
+						else
+							s = line.toString();
+						try { linesReceiver.newLine(s); }
+						catch (Exception e) {
+							e.printStackTrace(System.err);
+							client.close();
+							return null;
+						}
 						if (s.length() == 0) {
 							body = new ByteBuffersIO(true, "body", Task.PRIORITY_NORMAL);
 							try { mime.initBodyTransfer(body); }
@@ -60,11 +75,12 @@ public class TestTransferProtocol implements ServerProtocol {
 								return null;
 							}
 							client.setAttribute("body", body);
+							client.removeAttribute("mime_line");
+							client.removeAttribute("mime_lines");
 							receiveBody(client, mime, body, data, onbufferavailable);
 							return null;
 						}
-						mime.appendHeaderLine(s);
-						line = new StringBuilder();
+						line = new StringBuilder(128);
 						client.setAttribute("mime_line", line);
 						continue;
 					}
@@ -84,7 +100,7 @@ public class TestTransferProtocol implements ServerProtocol {
 		return false;
 	}
 	
-	private static void receiveBody(TCPServerClient client, MIME mime, ByteBuffersIO body, ByteBuffer data, Runnable onbufferavailable) {
+	private static void receiveBody(TCPServerClient client, MimeMessage mime, ByteBuffersIO body, ByteBuffer data, Runnable onbufferavailable) {
 		mime.bodyDataReady(data).listenInline((result) -> {
 			LCCore.getApplication().getDefaultLogger().info("Test data from client consumed, end reached = " + result);
 			data.clear();
@@ -103,16 +119,16 @@ public class TestTransferProtocol implements ServerProtocol {
 		});
 	}
 	
-	private static void answerToClient(TCPServerClient client, MIME mime, ByteBuffersIO body) {
+	private static void answerToClient(TCPServerClient client, MimeMessage mime, ByteBuffersIO body) {
 		client.removeAttribute("mime");
 		client.removeAttribute("mime_line");
 		client.removeAttribute("body");
 		LCCore.getApplication().getDefaultLogger().info("Body received, answer to client: " + body.getSizeSync());
 		body.seekSync(SeekType.FROM_BEGINNING, 0);
-		MIME answer = new MIME();
-		String s = mime.getHeaderSingleValue(MIME.TRANSFER_ENCODING);
+		MimeMessage answer = new MimeMessage();
+		String s = mime.getFirstHeaderRawValue(MimeMessage.TRANSFER_ENCODING);
 		if (s != null)
-			answer.setHeader(MIME.TRANSFER_ENCODING, s);
+			answer.setHeaderRaw(MimeMessage.TRANSFER_ENCODING, s);
 		/*
 		s = mime.getHeaderSingleValue(MIME.CONTENT_ENCODING);
 		if (s != null)
@@ -121,9 +137,9 @@ public class TestTransferProtocol implements ServerProtocol {
 		if (s != null)
 			answer.setHeader(MIME.CONTENT_TRANSFER_ENCODING, s);
 			*/
-		s = mime.getHeaderSingleValue("X-Test");
+		s = mime.getFirstHeaderRawValue("X-Test");
 		if (s != null)
-			answer.setHeader("X-Test", s);
+			answer.setHeaderRaw("X-Test", s);
 		answer.setBodyToSend(body);
 		answer.send(client).listenInline(() -> { client.close(); });
 	}

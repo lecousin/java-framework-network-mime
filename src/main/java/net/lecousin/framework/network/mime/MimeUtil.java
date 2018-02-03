@@ -5,73 +5,20 @@ import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 
+import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.encoding.Base64;
 import net.lecousin.framework.io.encoding.QuotedPrintable;
-import net.lecousin.framework.util.Pair;
 
-/**
- * Utility methods for MIME, typically encoding and decoding headers.
- */
-public final class MIMEUtil {
-
-	/** Parse the given header field, using syntax "value; paramName=paramValue; anotherParam=anotherValue". */
-	public static Pair<String, Map<String, String>> parseParameterizedHeader(String headerContent) throws IOException {
-		if (headerContent == null) return null;
-		int i = headerContent.indexOf(';');
-		if (i < 0)
-			return new Pair<>(headerContent.trim(), new HashMap<>());
-		String firstValue = headerContent.substring(0, i).trim();
-		firstValue = decodeHeaderRFC2047(firstValue);
-		headerContent = headerContent.substring(i + 1);
-		boolean inQuote = false;
-		boolean inValue = false;
-		Map<String, String> values = new HashMap<>();
-		StringBuilder name = new StringBuilder();
-		StringBuilder value = new StringBuilder();
-		for (i = 0; i < headerContent.length(); ++i) {
-			char c = headerContent.charAt(i);
-			if (inQuote) {
-				if (c == '\\') {
-					if (i < headerContent.length() - 1)
-						c = headerContent.charAt(++i);
-				} else if (c == '"') {
-					inQuote = false;
-					continue;
-				}
-			} else {
-				if (!inValue && c == '=') {
-					inValue = true;
-					continue;
-				}
-				if (c == ';') {
-					values.put(name.toString(), decodeHeaderRFC2047(value.toString()));
-					name = new StringBuilder();
-					value = new StringBuilder();
-					inValue = false;
-					continue;
-				}
-				if (c == ' ' && !inValue && name.length() == 0)
-					continue;
-				if (c == '"') {
-					inQuote = true;
-					continue;
-				}
-			}
-			if (inValue) value.append(c);
-			else name.append(c);
-		}
-		if (name.length() > 0 || value.length() > 0)
-			values.put(name.toString(), decodeHeaderRFC2047(value.toString()));
-		return new Pair<>(firstValue, values);
-	}
+public final class MimeUtil {
+	
+	private MimeUtil() { /* no instance */ }
 
 	/** Decode a header content using RFC 2047, which specifies encoded word as follows:
 	 * encoded-word = "=?" charset "?" encoding "?" encoded-text "?=".
 	 */
-	public static String decodeHeaderRFC2047(String value) throws IOException {
+	public static String decodeRFC2047(String value) throws IOException {
 		int pos = 0;
 		while (pos < value.length()) {
 			int i = value.indexOf("=?", pos);
@@ -114,19 +61,25 @@ public final class MIMEUtil {
 			throw new UnsupportedEncodingException("RFC 2047 encoding " + encoding);
 		}
 	}
-		
+	
 	/** Encode a header parameter value, taking bytes in the given charset,
 	 * and depending on its content it may be directly returned,
 	 * it may use double-quote or it may use the RFC 2047 encoding. */
-	public static String encodeHeaderParameterValue(String value, Charset charset) {
+	public static String encodeValue(String value, Charset charset) {
 		byte[] bytes = value.getBytes(charset);
 		boolean hasSpecialChars = false;
-		for (int i = 0; i < bytes.length; ++i)
+		boolean needsQuote = false;
+		for (int i = 0; i < bytes.length; ++i) {
+			if (bytes[i] == ' ' || bytes[i] == '\t' || bytes[i] == '"')
+				needsQuote = true;
 			if (bytes[i] < 32 || bytes[i] > 126) {
 				hasSpecialChars = true;
 				break;
 			}
+		}
 		if (!hasSpecialChars) {
+			if (!needsQuote)
+				return value;
 			return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
 		}
 		StringBuilder s = new StringBuilder(value.length() + 64);
@@ -139,8 +92,73 @@ public final class MIMEUtil {
 	/** Encode a header parameter value, taking bytes in UTF-8,
 	 * and depending on its content it may be directly returned,
 	 * it may use double-quote or it may use the RFC 2047 encoding. */
-	public static String encodeUTF8HeaderParameterValue(String value) {
-		return encodeHeaderParameterValue(value, StandardCharsets.UTF_8);
+	public static String encodeUTF8Value(String value) {
+		return encodeValue(value, StandardCharsets.UTF_8);
+	}
+	
+	@SuppressWarnings("resource")
+	public static MimeMessage mimeFromString(String content, Charset charset, String contentType) {
+		MimeMessage mime = new MimeMessage();
+		mime.setHeaderRaw(MimeMessage.CONTENT_TYPE, contentType + ";charset=" + charset.name());
+		mime.setBodyToSend(new ByteArrayIO(content.getBytes(charset), "Mime from string"));
+		return mime;
+	}
+	
+	public static class HeadersLinesReceiver {
+		
+		public HeadersLinesReceiver(List<MimeHeader> headers) {
+			this.headers = headers;
+		}
+		
+		private List<MimeHeader> headers;
+		private String currentName;
+		private StringBuilder currentValue;
+		
+		public List<MimeHeader> getHeaders() {
+			return headers;
+		}
+		
+		public void newLine(CharSequence line) throws Exception {
+			if (line.length() == 0) {
+				if (currentName != null) {
+					headers.add(new MimeHeader(currentName, currentValue.toString()));
+					currentName = null;
+					currentValue = null;
+				}
+				return;
+			}
+			char c = line.charAt(0);
+			if (c == ' ' || c == '\t') {
+				if (currentName == null)
+					throw new Exception("Invalid Mime header first line: cannot start with a space");
+				currentValue.append(line.subSequence(1, line.length()));
+				return;
+			}
+			if (c == ':')
+				throw new Exception("Invalid Mime header: no header name");
+			int i = 1;
+			int l = line.length();
+			while (i < l) {
+				if (line.charAt(i) == ':')
+					break;
+				i++;
+			}
+			if (i == l)
+				throw new Exception("Invalid Mime header line: <" + line + ">");
+			if (currentName != null)
+				headers.add(new MimeHeader(currentName, currentValue.toString()));
+			currentName = line.subSequence(0, i).toString().trim();
+			while (++i < l) {
+				c = line.charAt(i);
+				if (c != ' ' && c != '\t')
+					break;
+			}
+			if (i >= l)
+				currentValue = new StringBuilder(128);
+			else
+				currentValue = new StringBuilder(line.subSequence(i, l));
+		}
+		
 	}
 	
 }

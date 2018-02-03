@@ -15,7 +15,7 @@ import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.util.IOReaderAsProducer;
 import net.lecousin.framework.network.TCPRemote;
-import net.lecousin.framework.network.mime.MIME;
+import net.lecousin.framework.network.mime.MimeMessage;
 import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
 
 /**
@@ -24,7 +24,7 @@ import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
 public class IdentityTransfer extends TransferReceiver {
 
 	/** Constructor. */
-	public IdentityTransfer(MIME mime, ContentDecoder decoder) throws IOException {
+	public IdentityTransfer(MimeMessage mime, ContentDecoder decoder) throws IOException {
 		super(mime, decoder);
 		Long s = mime.getContentLength();
 		if (s == null)

@@ -4,11 +4,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.Properties;
 import java.util.zip.Deflater;
 
-import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 
 import net.lecousin.compression.gzip.GZipWritable;
@@ -23,12 +21,12 @@ import net.lecousin.framework.io.IOFromInputStream;
 import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
-import net.lecousin.framework.network.mime.entity.BinaryMimeEntity;
 import net.lecousin.framework.network.mime.entity.FormDataEntity;
 import net.lecousin.framework.network.mime.entity.FormDataEntity.PartFile;
 import net.lecousin.framework.network.mime.entity.FormUrlEncodedEntity;
 import net.lecousin.framework.network.mime.entity.MimeEntity;
 import net.lecousin.framework.network.mime.entity.MultipartEntity;
+import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.util.Pair;
 
 import org.junit.Assert;
@@ -76,7 +74,7 @@ public class TestEntities extends LCCoreAbstractTest {
 	
 	private static ByteBuffersIO generateBody(MimeEntity entity) throws Exception {
 		ByteBuffersIO out = new ByteBuffersIO(false, "MIME entity", Task.PRIORITY_NORMAL);
-		AsyncWork<Long, IOException> copy = IOUtil.copy(entity.getReadableStream(), out, -1, false, null, 0);
+		AsyncWork<Long, IOException> copy = IOUtil.copy(entity.getBodyToSend(), out, -1, false, null, 0);
 		copy.blockThrow(0);
 		return out;
 	}
@@ -96,20 +94,20 @@ public class TestEntities extends LCCoreAbstractTest {
 		SynchronizationPoint<IOException> parse = entity.parse(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL));
 		parse.blockThrow(0);
 		Assert.assertEquals(5, entity.getParts().size());
-		for (MimeEntity p : entity.getParts()) {
-			Pair<String, Map<String,String>> dispo = MIMEUtil.parseParameterizedHeader(p.getHeaderSingleValue("Content-Disposition"));
-			Assert.assertEquals("form-data", dispo.getValue1());
-			String name = dispo.getValue2().get("name");
+		for (MimeMessage p : entity.getParts()) {
+			ParameterizedHeaderValue dispo = p.getFirstHeaderValue(MimeMessage.CONTENT_DISPOSITION, ParameterizedHeaderValue.class);
+			Assert.assertEquals("form-data", dispo.getMainValue());
+			String name = dispo.getParameter("name");
 			if ("name".equals(name)) {
-				Assert.assertEquals("AJ ONeal", IOUtil.readFullyAsStringSync(p.getReadableStream(), StandardCharsets.US_ASCII));
+				Assert.assertEquals("AJ ONeal", IOUtil.readFullyAsStringSync(p.getBodyToSend(), StandardCharsets.US_ASCII));
 			} else if ("email".equals(name)) {
-				Assert.assertEquals("coolaj86@gmail.com", IOUtil.readFullyAsStringSync(p.getReadableStream(), StandardCharsets.US_ASCII));
+				Assert.assertEquals("coolaj86@gmail.com", IOUtil.readFullyAsStringSync(p.getBodyToSend(), StandardCharsets.US_ASCII));
 			} else if ("avatar".equals(name)) {
 				// png
-				Assert.assertEquals("image/png", p.getContentType());
+				Assert.assertEquals("image/png", p.getContentTypeValue());
 			} else if ("attachments[]".equals(name)) {
 				// text
-				Assert.assertEquals("text/plain", p.getContentType());
+				Assert.assertEquals("text/plain", p.getContentTypeValue());
 			} else
 				throw new AssertionError("Unexpected multipart form-data name " + name);
 		}
@@ -118,11 +116,11 @@ public class TestEntities extends LCCoreAbstractTest {
 	@Test(timeout=120000)
 	public void testGenerateMailWithMultipart() throws Exception {
 		MultipartEntity mailText = new MultipartEntity("alternative");
-		mailText.add(BinaryMimeEntity.fromString("Hello tester", StandardCharsets.UTF_8, "text/plain"));
-		mailText.add(BinaryMimeEntity.fromString("<html><body>Hello tester</body></html>", StandardCharsets.UTF_8, "text/html"));
-		mailText.addHeader("Subject", "This is a test");
+		mailText.add(MimeUtil.mimeFromString("Hello tester", StandardCharsets.UTF_8, "text/plain"));
+		mailText.add(MimeUtil.mimeFromString("<html><body>Hello tester</body></html>", StandardCharsets.UTF_8, "text/html"));
+		mailText.addHeaderRaw("Subject", "This is a test");
 		ByteBuffersIO out = new ByteBuffersIO(false, "Mail", Task.PRIORITY_NORMAL);
-		AsyncWork<Long, IOException> copy = IOUtil.copy(mailText.createIOWithHeaders(), out, -1, false, null, 0);
+		AsyncWork<Long, IOException> copy = IOUtil.copy(mailText.getReadableStream(), out, -1, false, null, 0);
 		copy.blockThrow(0);
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 		String s = IOUtil.readFullyAsStringSync(out, StandardCharsets.UTF_8);
@@ -131,7 +129,7 @@ public class TestEntities extends LCCoreAbstractTest {
 		System.out.println("_____________ End of Mail ___________");
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 		javax.mail.Session session = javax.mail.Session.getInstance(new Properties());
-		MimeMessage mail = new MimeMessage(session, IOAsInputStream.get(out));
+		javax.mail.internet.MimeMessage mail = new javax.mail.internet.MimeMessage(session, IOAsInputStream.get(out));
 		Assert.assertEquals("This is a test", mail.getSubject());
 		Object content = mail.getContent();
 		Assert.assertTrue(content instanceof MimeMultipart);
@@ -146,13 +144,14 @@ public class TestEntities extends LCCoreAbstractTest {
 	public void testFormData() throws Exception {
 		FormDataEntity form = new FormDataEntity();
 		form.addField("test", "1", StandardCharsets.US_ASCII);
-		form.addFile("myfile", "test.html", "text/html; charset=utf-8", new ByteArrayIO("<html></html>".getBytes(StandardCharsets.UTF_8), "test"));
+		form.addFile("myfile", "test.html", new ParameterizedHeaderValue("text/html", "charset", "utf-8"), new ByteArrayIO("<html></html>".getBytes(StandardCharsets.UTF_8), "test"));
 		ByteArrayIO gz = new ByteArrayIO(1024, "test");
 		GZipWritable gzip = new GZipWritable(gz, Task.PRIORITY_NORMAL, Deflater.BEST_COMPRESSION, 3);
 		gzip.writeSync(ByteBuffer.wrap("<html><body></body></html>".getBytes(StandardCharsets.UTF_8)));
 		gzip.finishSynch();
 		gz.seekSync(SeekType.FROM_BEGINNING, 0);
-		form.addFile("encoded", "test.html.gz", "text/html; charset=utf-8", gz, MIME.CONTENT_ENCODING, "gzip");
+		PartFile f = form.addFile("encoded", "test.html.gz", new ParameterizedHeaderValue("text/html", "charset", "utf-8"), gz);
+		f.setHeaderRaw(MimeMessage.CONTENT_ENCODING, "gzip");
 		form.addField("hello", "world", StandardCharsets.UTF_8);
 		
 		ByteBuffersIO out = new ByteBuffersIO(false, "Form", Task.PRIORITY_NORMAL);
@@ -168,11 +167,11 @@ public class TestEntities extends LCCoreAbstractTest {
 		Assert.assertEquals("world", parse.getFieldValue("hello"));
 		PartFile file = parse.getFile("myfile");
 		Assert.assertEquals("test.html", file.getFilename());
-		String content = IOUtil.readFullyAsStringSync(file.getReadableStream(), StandardCharsets.UTF_8);
+		String content = IOUtil.readFullyAsStringSync(file.getBodyToSend(), StandardCharsets.UTF_8);
 		Assert.assertEquals("<html></html>", content);
 		file = parse.getFile("encoded");
 		Assert.assertEquals("test.html.gz", file.getFilename());
-		content = IOUtil.readFullyAsStringSync(file.getReadableStream(), StandardCharsets.UTF_8);
+		content = IOUtil.readFullyAsStringSync(file.getBodyToSend(), StandardCharsets.UTF_8);
 		Assert.assertEquals("<html><body></body></html>", content);
 		
 		form.close();

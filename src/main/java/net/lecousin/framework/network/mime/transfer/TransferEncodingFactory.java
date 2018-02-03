@@ -7,7 +7,9 @@ import java.util.LinkedList;
 import java.util.Map;
 
 import net.lecousin.framework.io.IO;
-import net.lecousin.framework.network.mime.MIME;
+import net.lecousin.framework.network.mime.MimeMessage;
+import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
+import net.lecousin.framework.network.mime.header.ParameterizedHeaderValues;
 import net.lecousin.framework.network.mime.transfer.encoding.Base64Decoder;
 import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
 import net.lecousin.framework.network.mime.transfer.encoding.GZipDecoder;
@@ -48,20 +50,23 @@ public final class TransferEncodingFactory {
 	
 	/** Instantiate a TransferReceiver with a ContentDecoder based on the Transfer-Encoding,
 	 * Content-Transfer-Encoding and Content-Encoding headers. */
-	public static TransferReceiver create(MIME mime, IO.Writable out) throws IOException {
+	public static TransferReceiver create(MimeMessage mime, IO.Writable out) throws IOException {
 		String transfer = "identity";
 		LinkedList<String> encoding = new LinkedList<>();
 
-		String s = mime.getHeaderSingleValue(MIME.TRANSFER_ENCODING);
-		if (s != null) {
-			String[] list = s.split(",");
-			for (String e : list) {
+		ParameterizedHeaderValues values;
+		try { values = mime.getFirstHeaderValue(MimeMessage.TRANSFER_ENCODING, ParameterizedHeaderValues.class); }
+		catch (Exception e) { values = null; }
+		if (values != null) {
+			for (ParameterizedHeaderValue value : values.getValues()) {
+				String e = value.getMainValue();
+				if (e == null) continue;
 				e = e.trim().toLowerCase();
 				if (e.isEmpty()) continue;
 				encoding.add(e);
 			}
 			if (!encoding.isEmpty()) {
-				s = encoding.getLast();
+				String s = encoding.getLast();
 				if ("identity".equals(s))
 					encoding.removeLast();
 				else if ("chunked".equals(s)) {
@@ -71,16 +76,18 @@ public final class TransferEncodingFactory {
 			}
 		}
 		
-		s = mime.getHeaderSingleValue(MIME.CONTENT_TRANSFER_ENCODING);
-		if (s != null) {
-			String[] list = s.split(",");
-			for (String e : list) {
+		try { values = mime.getFirstHeaderValue(MimeMessage.CONTENT_TRANSFER_ENCODING, ParameterizedHeaderValues.class); }
+		catch (Exception e) { values = null; }
+		if (values != null) {
+			for (ParameterizedHeaderValue value : values.getValues()) {
+				String e = value.getMainValue();
+				if (e == null) continue;
 				e = e.trim().toLowerCase();
 				if (e.isEmpty()) continue;
 				encoding.add(e);
 			}
 			if (!encoding.isEmpty()) {
-				s = encoding.getLast();
+				String s = encoding.getLast();
 				if ("identity".equals(s))
 					encoding.removeLast();
 				else if ("chunked".equals(s)) {
@@ -90,10 +97,12 @@ public final class TransferEncodingFactory {
 			}
 		}
 		
-		s = mime.getHeaderSingleValue(MIME.CONTENT_ENCODING);
-		if (s != null) {
-			String[] list = s.split(",");
-			for (String e : list) {
+		try { values = mime.getFirstHeaderValue(MimeMessage.CONTENT_ENCODING, ParameterizedHeaderValues.class); }
+		catch (Exception e) { values = null; }
+		if (values != null) {
+			for (ParameterizedHeaderValue value : values.getValues()) {
+				String e = value.getMainValue();
+				if (e == null) continue;
 				e = e.trim().toLowerCase();
 				if (e.isEmpty()) continue;
 				encoding.add(e);
@@ -121,8 +130,8 @@ public final class TransferEncodingFactory {
 			}
 		}
 		if (!hasDecoder) {
-			if (MIME.logger.isErrorEnabled())
-				MIME.logger.error("Content encoding '" + encoding
+			if (MimeMessage.logger.isErrorEnabled())
+				MimeMessage.logger.error("Content encoding '" + encoding
 					+ "' not supported, data may not be readable.");
 		}
 		if (ctor == null)
@@ -130,26 +139,30 @@ public final class TransferEncodingFactory {
 		try {
 			return ctor.newInstance(next);
 		} catch (Exception e) {
-			if (MIME.logger.isErrorEnabled())
-				MIME.logger.error("Content decoder " + ctor.getName() + " cannot be instantiated for encoding '"
+			if (MimeMessage.logger.isErrorEnabled())
+				MimeMessage.logger.error("Content decoder " + ctor.getName() + " cannot be instantiated for encoding '"
 					+ encoding + "', data may not be readable.");
 			return next;
 		}
 	}
 	
 	/** Create a ContentDecoder for the Content-Encoding or Content-Transfer-Encoding field of the given MIME. */
-	public static ContentDecoder createDecoder(ContentDecoder next, MIME mime) {
+	public static ContentDecoder createDecoder(ContentDecoder next, MimeMessage mime) {
 		LinkedList<String> encoding = new LinkedList<>();
-		String s = mime.getHeaderSingleValue(MIME.CONTENT_TRANSFER_ENCODING);
-		if (s != null) {
-			String[] list = s.split(",");
-			for (String e : list) {
+		
+		ParameterizedHeaderValues values;
+		try { values = mime.getFirstHeaderValue(MimeMessage.CONTENT_TRANSFER_ENCODING, ParameterizedHeaderValues.class); }
+		catch (Exception e) { values = null; }
+		if (values != null) {
+			for (ParameterizedHeaderValue value : values.getValues()) {
+				String e = value.getMainValue();
+				if (e == null) continue;
 				e = e.trim().toLowerCase();
 				if (e.isEmpty()) continue;
 				encoding.add(e);
 			}
 			if (!encoding.isEmpty()) {
-				s = encoding.getLast();
+				String s = encoding.getLast();
 				if ("identity".equals(s))
 					encoding.removeLast();
 				else if ("chunked".equals(s)) {
@@ -158,10 +171,12 @@ public final class TransferEncodingFactory {
 			}
 		}
 		
-		s = mime.getHeaderSingleValue(MIME.CONTENT_ENCODING);
-		if (s != null) {
-			String[] list = s.split(",");
-			for (String e : list) {
+		try { values = mime.getFirstHeaderValue(MimeMessage.CONTENT_ENCODING, ParameterizedHeaderValues.class); }
+		catch (Exception e) { values = null; }
+		if (values != null) {
+			for (ParameterizedHeaderValue value : values.getValues()) {
+				String e = value.getMainValue();
+				if (e == null) continue;
 				e = e.trim().toLowerCase();
 				if (e.isEmpty()) continue;
 				encoding.add(e);

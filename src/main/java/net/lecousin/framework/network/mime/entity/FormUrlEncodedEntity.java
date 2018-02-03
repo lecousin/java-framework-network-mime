@@ -7,21 +7,59 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
 import net.lecousin.framework.concurrent.Task;
+import net.lecousin.framework.concurrent.synch.AsyncWork;
 import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
 import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.text.BufferedReadableCharacterStream;
+import net.lecousin.framework.network.mime.MimeMessage;
+import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.util.Pair;
 
 /** Form parameters using x-www-form-urlencoded format. */
-public class FormUrlEncodedEntity implements MimeEntity {
+public class FormUrlEncodedEntity extends MimeEntity {
 
+	public FormUrlEncodedEntity() {
+		addHeaderRaw(CONTENT_TYPE, "application/x-www-form-urlencoded; charset=utf-8");
+	}
+	
+	protected FormUrlEncodedEntity(MimeMessage from) {
+		super(from);
+		addHeaderRaw(CONTENT_TYPE, "application/x-www-form-urlencoded; charset=utf-8");
+	}
+	
+	@SuppressWarnings("resource")
+	public static AsyncWork<FormUrlEncodedEntity, Exception> from(MimeMessage mime) {
+		FormUrlEncodedEntity entity;
+		try { entity = new FormUrlEncodedEntity(mime); }
+		catch (Exception e) { return new AsyncWork<>(null, e); }
+		
+		IO.Readable body = mime.getBodyReceivedAsInput();
+		if (body == null)
+			return new AsyncWork<>(entity, null);
+		Charset charset = null;
+		try {
+			ParameterizedHeaderValue type = mime.getContentType();
+			String cs = type.getParameter("charset");
+			if (cs != null)
+				charset = Charset.forName(cs);
+		} catch (Exception e) {
+			// ignore
+		}
+		if (charset == null)
+			charset = StandardCharsets.ISO_8859_1;
+		SynchronizationPoint<IOException> parse = entity.parse(body, charset);
+		AsyncWork<FormUrlEncodedEntity, Exception> result = new AsyncWork<>();
+		parse.listenInlineSP(() -> { result.unblockSuccess(entity); }, result);
+		parse.listenInline(() -> { body.closeAsync(); });
+		return result;
+	}
+	
 	protected List<Pair<String, String>> parameters = new LinkedList<>();
 	
 	/** Add a parameter. */
@@ -113,17 +151,7 @@ public class FormUrlEncodedEntity implements MimeEntity {
 	}
 	
 	@Override
-	public String getContentType() {
-		return "application/x-www-form-urlencoded; charset=utf-8";
-	}
-	
-	@Override
-	public List<Pair<String, String>> getAdditionalHeaders() {
-		return new ArrayList<>(0);
-	}
-	
-	@Override
-	public IO.Readable getReadableStream() {
+	public IO.Readable getBodyToSend() {
 		StringBuilder s = new StringBuilder(1024);
 		for (Pair<String, String> param : parameters) {
 			if (s.length() > 0) s.append('&');

@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import net.lecousin.framework.concurrent.synch.AsyncWork;
-import net.lecousin.framework.network.mime.MIME;
+import net.lecousin.framework.network.mime.MimeMessage;
 import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
 
 /**
@@ -16,12 +16,12 @@ import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
 public abstract class TransferReceiver {
 
 	/** Constructor. */
-	public TransferReceiver(MIME mime, ContentDecoder decoder) {
+	public TransferReceiver(MimeMessage mime, ContentDecoder decoder) {
 		this.mime = mime;
 		this.decoder = decoder;
 	}
 	
-	protected MIME mime;
+	protected MimeMessage mime;
 	protected ContentDecoder decoder;
 	
 	/** the returned work is true if the end has been reached. */
