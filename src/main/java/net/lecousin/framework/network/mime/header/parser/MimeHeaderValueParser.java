@@ -21,8 +21,11 @@ public final class MimeHeaderValueParser {
 		StringBuilder currentWord = null;
 		for (; i < l; ++i) {
 			char c = value.charAt(i);
-			if (c == end)
+			if (c == end) {
+				if (currentWord != null)
+					tokens.add(new Word(currentWord.toString()));
 				return new Pair<>(tokens, Integer.valueOf(i));
+			}
 			if (escape) {
 				if (currentWord == null)
 					currentWord = new StringBuilder();
@@ -91,7 +94,7 @@ public final class MimeHeaderValueParser {
 					tokens.add(new Word(currentWord.toString()));
 					currentWord = null;
 				}
-				Pair<List<Token>, Integer> p = parse(value, i + 1, ']');
+				Pair<List<Token>, Integer> p = parse(value, i + 1, '>');
 				tokens.add(new Address(p.getValue1()));
 				i = p.getValue2().intValue();
 				continue;
