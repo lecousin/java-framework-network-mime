@@ -1,5 +1,6 @@
 package net.lecousin.framework.network.mime;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
@@ -7,7 +8,13 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import net.lecousin.framework.concurrent.Task;
+import net.lecousin.framework.concurrent.synch.AsyncWork;
+import net.lecousin.framework.exception.NoException;
+import net.lecousin.framework.io.IO;
+import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
+import net.lecousin.framework.io.buffering.IOInMemoryOrFile;
 import net.lecousin.framework.io.encoding.Base64;
 import net.lecousin.framework.io.encoding.QuotedPrintable;
 
@@ -158,7 +165,94 @@ public final class MimeUtil {
 			else
 				currentValue = new StringBuilder(line.subSequence(i, l));
 		}
+	}
+	
+	public static AsyncWork<MimeMessage, IOException> parseMimeMessage(IO.Readable.Buffered input) {
+		MessageParser parser = new MessageParser(input);
+		return parser.sp;
+	}
+	
+	private static class MessageParser {
+		private MessageParser(IO.Readable.Buffered input) {
+			io = input;
+			mime = new MimeMessage();
+			header = new MimeUtil.HeadersLinesReceiver(mime.getHeaders());
+			nextBuffer();
+		}
 		
+		private IO.Readable.Buffered io;
+		private AsyncWork<MimeMessage, IOException> sp = new AsyncWork<>();
+		private MimeMessage mime;
+		private MimeUtil.HeadersLinesReceiver header;
+		private StringBuilder headerLine = new StringBuilder(128);
+		
+		public void nextBuffer() {
+			io.readNextBufferAsync().listenInline(
+				(buffer) -> { parse(buffer); },
+				sp
+			);
+		}
+		
+		private void parse(ByteBuffer buffer) {
+			if (buffer == null) {
+				sp.error(new EOFException("Unexpected end of MIME message"));
+				return;
+			}
+			if (header == null) {
+				mime.bodyDataReady(buffer).listenInline((end) -> {
+					if (end.booleanValue()) {
+						((IOInMemoryOrFile)mime.getBodyReceivedAsInput())
+							.seekAsync(SeekType.FROM_BEGINNING, 0)
+							.listenInline(() -> {
+								sp.unblockSuccess(mime);
+							}, sp);
+					} else
+						nextBuffer();
+				}, sp);
+				return;
+			}
+			new Task.Cpu<Void, NoException>("Parsing MIME Message", io.getPriority()) {
+				@Override
+				public Void run() {
+					while (buffer.hasRemaining()) {
+						byte b = buffer.get();
+						if (b == '\n') {
+							String line;
+							if (headerLine.length() > 0 && headerLine.charAt(headerLine.length() - 1) == '\r')
+								line = headerLine.substring(0, headerLine.length() - 1);
+							else
+								line = headerLine.toString();
+							try { header.newLine(line); }
+							catch (Exception e) {
+								sp.error(IO.error(e));
+								return null;
+							}
+							if (line.length() == 0) {
+								// end of MIME headers
+								headerLine = null;
+								setBody(buffer);
+								return null;
+							}
+							headerLine = new StringBuilder(128);
+							continue;
+						}
+						headerLine.append((char)b);
+					}
+					nextBuffer();
+					return null;
+				}
+			}.start();
+		}
+		
+		private void setBody(ByteBuffer buffer) {
+			try { mime.initBodyTransfer(new IOInMemoryOrFile(65536, io.getPriority(), "MIME body from " + io.getSourceDescription())); }
+			catch (IOException e) {
+				sp.error(e);
+				return;
+			}
+			header = null;
+			parse(buffer);
+		}
 	}
 	
 }

@@ -40,7 +40,7 @@ public class TestHeader extends LCCoreAbstractTest {
 		Assert.assertNotNull(v);
 		Assert.assertEquals(0, v.getParameters().size());
 		Assert.assertNull(v.getParameter("aa"));
-		Assert.assertNull(v.getParameter("bb"));
+		Assert.assertNull(v.getParameterIgnoreCase("bb"));
 		v = values.getMainValue("aa");
 		Assert.assertNotNull(v);
 		Assert.assertEquals(1, v.getParameters().size());
@@ -64,10 +64,11 @@ public class TestHeader extends LCCoreAbstractTest {
 		Assert.assertEquals("bonjour", v.getParameter("fr"));
 		v = h.getValue(ParameterizedHeaderValue.class);
 		Assert.assertEquals("hello", v.getMainValue());
-		Assert.assertEquals("bonjour", v.getParameter("fr"));
+		Assert.assertEquals("bonjour", v.getParameterIgnoreCase("FR"));
 		h.setValue(new ParameterizedHeaderValue("world", "fr", "monde", "test", "yes"));
 		Assert.assertEquals("world;fr=monde;test=yes", h.getRawValue());
 		h.appendTo(new StringBuilder());
+		v.setMainValue("hello");
 	}
 	
 	@Test(timeout=30000)
@@ -97,6 +98,7 @@ public class TestHeader extends LCCoreAbstractTest {
 		tok = it.next();
 		Assert.assertEquals(Address.class, tok.getClass());
 		Assert.assertEquals("<user@mail.com>", ((Address)tok).asText());
+		((Address)tok).getContent();
 		tok = it.next();
 		Assert.assertEquals(Space.class, tok.getClass());
 		tok = it.next();
@@ -141,6 +143,12 @@ public class TestHeader extends LCCoreAbstractTest {
 		Assert.assertEquals(Comment.class, tok.getClass());
 		Assert.assertEquals("(comment3)", ((Comment)tok).asText());
 		Assert.assertFalse(it.hasNext());
+		
+		tokens = MimeHeaderValueParser.parse(" hel\\5lo ");
+		Token.trim(tokens);
+		Assert.assertEquals(1, tokens.size());
+		Assert.assertEquals(Word.class, tokens.get(0).getClass());
+		Assert.assertEquals("hel5lo", ((Word)tokens.get(0)).getContent());
 	}
 	
 }

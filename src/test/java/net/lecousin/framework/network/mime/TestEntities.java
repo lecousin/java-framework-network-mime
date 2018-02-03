@@ -21,6 +21,7 @@ import net.lecousin.framework.io.IOFromInputStream;
 import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
+import net.lecousin.framework.io.buffering.SimpleBufferedReadable;
 import net.lecousin.framework.network.mime.entity.FormDataEntity;
 import net.lecousin.framework.network.mime.entity.FormDataEntity.PartFile;
 import net.lecousin.framework.network.mime.entity.FormUrlEncodedEntity;
@@ -48,6 +49,11 @@ public class TestEntities extends LCCoreAbstractTest {
 		source.add("key+%@=1", "value=%1");
 		source.add("key\"2", "value'2");
 		check(source);
+		
+		MimeMessage mime = MimeUtil.parseMimeMessage(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("formurlencoded.raw"), "formurlencoded.raw", Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL), 4096)).blockResult(0);
+		FormUrlEncodedEntity entity = FormUrlEncodedEntity.from(mime).blockResult(0);
+		Assert.assertEquals("Cosby", entity.getParameter("home"));
+		Assert.assertEquals("flies", entity.getParameter("favorite flavor"));
 	}
 	
 	@SuppressWarnings("resource")

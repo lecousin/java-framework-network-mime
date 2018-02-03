@@ -1,0 +1,6 @@
+From: hello@world.com
+User-Agent: myhand/1.0
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 32
+
+home=Cosby&favorite+flavor=flies
