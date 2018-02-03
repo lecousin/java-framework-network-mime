@@ -44,6 +44,11 @@ public class MimeMessage {
 	public MimeMessage(List<MimeHeader> headers) {
 		this.headers.addAll(headers);
 	}
+
+	public MimeMessage(MimeHeader... headers) {
+		for (MimeHeader h : headers)
+			this.headers.add(h);
+	}
 	
 	// ***** Headers *****
 	
