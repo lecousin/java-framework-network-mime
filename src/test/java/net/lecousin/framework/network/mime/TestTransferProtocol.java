@@ -83,7 +83,10 @@ public class TestTransferProtocol implements ServerProtocol {
 							client.setAttribute("body", body);
 							client.removeAttribute("mime_line");
 							client.removeAttribute("mime_lines");
-							receiveBody(client, mime, transfer, body, data, onbufferavailable);
+							if (transfer.isExpectingData())
+								receiveBody(client, mime, transfer, body, data, onbufferavailable);
+							else
+								answerToClient(client, mime, body);
 							return null;
 						}
 						line = new StringBuilder(128);

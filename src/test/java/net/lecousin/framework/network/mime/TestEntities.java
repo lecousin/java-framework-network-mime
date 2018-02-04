@@ -28,6 +28,7 @@ import net.lecousin.framework.network.mime.entity.FormUrlEncodedEntity;
 import net.lecousin.framework.network.mime.entity.MimeEntity;
 import net.lecousin.framework.network.mime.entity.MultipartEntity;
 import net.lecousin.framework.network.mime.entity.TextEntity;
+import net.lecousin.framework.network.mime.header.InternetAddressHeaderValue;
 import net.lecousin.framework.network.mime.header.InternetAddressListHeaderValue;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.util.Pair;
@@ -187,6 +188,9 @@ public class TestEntities extends LCCoreAbstractTest {
 		content = IOUtil.readFullyAsStringSync(file.getBodyToSend(), StandardCharsets.UTF_8);
 		Assert.assertEquals("<html><body></body></html>", content);
 		
+		Assert.assertNull(parse.getFile("tutu"));
+		Assert.assertNull(parse.getFieldValue("tutu"));
+		
 		form.close();
 		parse.closeAsync();
 		out.close();
@@ -201,7 +205,19 @@ public class TestEntities extends LCCoreAbstractTest {
 		src.setCharset(StandardCharsets.UTF_16);
 		Assert.assertEquals("This is still a text", src.getText());
 		Assert.assertEquals(StandardCharsets.UTF_16, src.getCharset());
-		
+		src.addHeader("MyAddress", new InternetAddressHeaderValue("Myself", "me@domain.org"));
+		src.addHeader("Toto", new InternetAddressHeaderValue(null, "toto@domain.org"));
+		InternetAddressHeaderValue addr = src.getFirstHeaderValue("myaddress", InternetAddressHeaderValue.class);
+		addr.setDisplayName("This is myself");
+		src.setHeader("myaddress", addr);
+		addr = src.getFirstHeaderValue("toto", InternetAddressHeaderValue.class);
+		addr.setAddress("toto@zero.com");
+		src.setHeader("Toto", addr);
+		InternetAddressListHeaderValue addresses = new InternetAddressListHeaderValue();
+		addresses.addAddress("First", "1@first.net");
+		addresses.addAddress(null, "2@second.net");
+		src.setHeader("List", addresses);
+
 		ByteBuffersIO out = new ByteBuffersIO(false, "Entity", Task.PRIORITY_NORMAL);
 		AsyncWork<Long, IOException> copy = IOUtil.copy(src.getReadableStream(), out, -1, false, null, 0);
 		copy.blockThrow(0);
@@ -216,6 +232,22 @@ public class TestEntities extends LCCoreAbstractTest {
 		TextEntity parsed = TextEntity.from(mime).blockResult(0);
 		Assert.assertEquals("This is still a text", parsed.getText());
 		Assert.assertEquals(StandardCharsets.UTF_16, parsed.getCharset());
+		
+		addr = parsed.getFirstHeaderValue("MyAddress", InternetAddressHeaderValue.class);
+		Assert.assertNotNull(addr);
+		Assert.assertEquals("This is myself", addr.getDisplayName());
+		Assert.assertEquals("me@domain.org", addr.getAddress());
+		addr = parsed.getFirstHeaderValue("toto", InternetAddressHeaderValue.class);
+		Assert.assertNotNull(addr);
+		Assert.assertNull(addr.getDisplayName());
+		Assert.assertEquals("toto@zero.com", addr.getAddress());
+		addresses = parsed.getFirstHeaderValue("list", InternetAddressListHeaderValue.class);
+		Assert.assertNotNull(addresses);
+		Assert.assertEquals(2, addresses.getAddresses().size());
+		Assert.assertEquals("First", addresses.getAddresses().get(0).getDisplayName());
+		Assert.assertEquals("1@first.net", addresses.getAddresses().get(0).getAddress());
+		Assert.assertNull(addresses.getAddresses().get(1).getDisplayName());
+		Assert.assertEquals("2@second.net", addresses.getAddresses().get(1).getAddress());
 		
 		out.close();
 	}

@@ -345,4 +345,26 @@ public class TestTransfer extends AbstractNetworkTest {
 		Assert.assertArrayEquals(data, buf);
 	}
 	
+	@Test(timeout=60000)
+	public void testSendEmptyBody() throws Exception {
+		TCPServer server = new TCPServer();
+		server.setProtocol(new TestTransferProtocol());
+		server.bind(new InetSocketAddress("localhost", 9999), 0);
+		MimeMessage mime = new MimeMessage();
+		mime.setHeaderRaw("X-Test", "Hello World");
+		TCPClient client = new TCPClient();
+		client.connect(new InetSocketAddress("localhost", 9999), 10000).blockThrow(0);
+		mime.send(client).blockThrow(0);
+		MimeMessage answer = new MimeMessage();
+		answer.readHeader(client, 10000).blockThrow(0);
+		Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
+		ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
+		answer.setBodyReceived(body);
+		TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
+		Assert.assertFalse(transfer.isExpectingData());
+		body.close();
+		server.close();
+		client.close();
+	}
+	
 }

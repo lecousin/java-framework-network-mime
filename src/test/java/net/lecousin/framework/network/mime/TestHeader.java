@@ -71,6 +71,17 @@ public class TestHeader extends LCCoreAbstractTest {
 		h.appendTo(new StringBuilder());
 		v.setMainValue("hello");
 		v.setParameter("turlututu", "pointu");
+		
+		MimeMessage mime = new MimeMessage(
+			new MimeHeader("h1", "v1"),
+			new MimeHeader("h2", "v2")
+		);
+		mime.addHeader(new MimeHeader("h3", "v3"));
+		mime.setHeader(new MimeHeader("h1", "v11"));
+		mime.setHeader(new MimeHeader("h4", "v4"));
+		Assert.assertEquals(4, mime.getHeaders().size());
+		mime.getBodyReceivedAsOutput();
+		mime.getReadableStream().close();
 	}
 	
 	@Test(timeout=30000)
