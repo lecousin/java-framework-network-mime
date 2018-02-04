@@ -53,6 +53,24 @@ public class ParameterizedHeaderValue implements HeaderValueFormat {
 		parameters.add(new Pair<>(name, value));
 	}
 	
+	public void setParameter(String name, String value) {
+		for (Pair<String, String> p : parameters)
+			if (p.getValue1().equals(name)) {
+				p.setValue2(value);
+				return;
+			}
+		parameters.add(new Pair<>(name, value));
+	}
+	
+	public void setParameterIgnoreCase(String name, String value) {
+		for (Pair<String, String> p : parameters)
+			if (p.getValue1().equalsIgnoreCase(name)) {
+				p.setValue2(value);
+				return;
+			}
+		parameters.add(new Pair<>(name, value));
+	}
+	
 	@Override
 	public void parseTokens(List<Token> tokens) throws Exception {
 		mainValue = null;

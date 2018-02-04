@@ -67,8 +67,10 @@ public class TestHeader extends LCCoreAbstractTest {
 		Assert.assertEquals("bonjour", v.getParameterIgnoreCase("FR"));
 		h.setValue(new ParameterizedHeaderValue("world", "fr", "monde", "test", "yes"));
 		Assert.assertEquals("world;fr=monde;test=yes", h.getRawValue());
+		h.setValue(new ParameterizedHeaderValue("world", "fr", "monde", "test", "yes"));
 		h.appendTo(new StringBuilder());
 		v.setMainValue("hello");
+		v.setParameter("turlututu", "pointu");
 	}
 	
 	@Test(timeout=30000)
