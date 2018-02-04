@@ -30,7 +30,7 @@ import net.lecousin.framework.util.StringUtil;
  */
 public class ChunkedTransfer extends TransferReceiver {
 
-	public static final byte[] FINAL_CHUNK = new byte[] { '0', '\r', '\n', '\r', '\n' };
+	private static final byte[] FINAL_CHUNK = new byte[] { '0', '\r', '\n', '\r', '\n' };
 	
 	/** Constructor. */
 	public ChunkedTransfer(MimeMessage mime, ContentDecoder decoder) {
