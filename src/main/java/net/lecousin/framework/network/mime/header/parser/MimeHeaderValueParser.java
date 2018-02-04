@@ -5,10 +5,12 @@ import java.util.List;
 
 import net.lecousin.framework.util.Pair;
 
+/** Parser. */
 public final class MimeHeaderValueParser {
 
 	private MimeHeaderValueParser() { /* no instance */ }
 	
+	/** Parse. */
 	public static List<Token> parse(String value) {
 		Pair<List<Token>, Integer> p = parse(value, 0, (char)0);
 		return p.getValue1();

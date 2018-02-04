@@ -9,11 +9,18 @@ import net.lecousin.framework.network.mime.header.parser.Token;
 import net.lecousin.framework.network.mime.header.parser.Word;
 import net.lecousin.framework.util.Pair;
 
+/**
+ * A parameterized header value is a <i>main value</i> optionally followed by
+ * parameters which are separated by semi-colons.
+ * Example is the Content-Type header: text/plain; charset=utf-8
+ */
 public class ParameterizedHeaderValue implements HeaderValueFormat {
 
+	/** Constructor. */
 	public ParameterizedHeaderValue() {
 	}
 
+	/** Constructor. */
 	public ParameterizedHeaderValue(String mainValue, String... parameters) {
 		this.mainValue = mainValue;
 		for (int i = 0; i < parameters.length - 1; i += 2)
@@ -31,6 +38,7 @@ public class ParameterizedHeaderValue implements HeaderValueFormat {
 		return parameters;
 	}
 	
+	/** Get the value of the parameter having the given name (case sensitive). */
 	public String getParameter(String name) {
 		for (Pair<String, String> p : parameters)
 			if (name.equals(p.getValue1()))
@@ -38,6 +46,7 @@ public class ParameterizedHeaderValue implements HeaderValueFormat {
 		return null;
 	}
 	
+	/** Get the value of the parameter having the given name (case insensitive). */
 	public String getParameterIgnoreCase(String name) {
 		for (Pair<String, String> p : parameters)
 			if (name.equalsIgnoreCase(p.getValue1()))
@@ -49,10 +58,12 @@ public class ParameterizedHeaderValue implements HeaderValueFormat {
 		mainValue = value;
 	}
 	
+	/** Add a parameter. */
 	public void addParameter(String name, String value) {
 		parameters.add(new Pair<>(name, value));
 	}
 	
+	/** Set a parameter. */
 	public void setParameter(String name, String value) {
 		for (Pair<String, String> p : parameters)
 			if (p.getValue1().equals(name)) {
@@ -62,6 +73,7 @@ public class ParameterizedHeaderValue implements HeaderValueFormat {
 		parameters.add(new Pair<>(name, value));
 	}
 	
+	/** Set a parameter ignoring parameter name case. */
 	public void setParameterIgnoreCase(String name, String value) {
 		for (Pair<String, String> p : parameters)
 			if (p.getValue1().equalsIgnoreCase(name)) {

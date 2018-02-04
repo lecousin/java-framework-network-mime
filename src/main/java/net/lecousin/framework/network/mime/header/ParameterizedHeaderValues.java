@@ -6,6 +6,9 @@ import java.util.List;
 import net.lecousin.framework.network.mime.header.parser.SpecialCharacter;
 import net.lecousin.framework.network.mime.header.parser.Token;
 
+/**
+ * Comma separated list of parameterized header values.
+ */
 public class ParameterizedHeaderValues implements HeaderValueFormat {
 
 	private List<ParameterizedHeaderValue> values = new LinkedList<>();
@@ -14,6 +17,7 @@ public class ParameterizedHeaderValues implements HeaderValueFormat {
 		return values;
 	}
 	
+	/** Return the value having the given main value. */
 	public ParameterizedHeaderValue getMainValue(String value) {
 		for (ParameterizedHeaderValue v : values)
 			if (value.equals(v.getMainValue()))
@@ -21,6 +25,7 @@ public class ParameterizedHeaderValues implements HeaderValueFormat {
 		return null;
 	}
 	
+	/** Return true if a value has the given main value. */
 	public boolean hasMainValue(String value) {
 		return getMainValue(value) != null;
 	}

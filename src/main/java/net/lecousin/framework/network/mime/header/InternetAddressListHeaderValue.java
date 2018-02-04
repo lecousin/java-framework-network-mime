@@ -6,8 +6,12 @@ import java.util.List;
 import net.lecousin.framework.network.mime.header.parser.SpecialCharacter;
 import net.lecousin.framework.network.mime.header.parser.Token;
 
+/** Comma separated list of internet addresses.
+ * Example: My Name &lt;myname@email.com&gt;, My Friend &lt;friend@email.com&gt;
+ */
 public class InternetAddressListHeaderValue implements HeaderValueFormat {
 
+	/** Constructor. */
 	public InternetAddressListHeaderValue() {
 	}
 	
@@ -16,11 +20,13 @@ public class InternetAddressListHeaderValue implements HeaderValueFormat {
 	public List<InternetAddressHeaderValue> getAddresses() {
 		return addresses;
 	}
-	
+
+	/** Add an address. */
 	public void addAddress(InternetAddressHeaderValue address) {
 		addresses.add(address);
 	}
 	
+	/** Add an address. */
 	public void addAddress(String displayName, String address) {
 		addAddress(new InternetAddressHeaderValue(displayName, address));
 	}

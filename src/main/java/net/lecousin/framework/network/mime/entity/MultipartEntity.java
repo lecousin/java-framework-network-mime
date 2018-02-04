@@ -54,6 +54,9 @@ public class MultipartEntity extends MimeEntity {
 		this.boundary = s.getBytes(StandardCharsets.US_ASCII);
 	}
 	
+	/** Parse the body of the given MimeMessage into a MultipartEntity.
+	 * @param fromReceived if true, the received body is parsed, else the body to send is parsed from the mime message.
+	 */
 	@SuppressWarnings("resource")
 	public static AsyncWork<MultipartEntity, Exception> from(MimeMessage mime, boolean fromReceived) {
 		MultipartEntity entity;

@@ -102,6 +102,7 @@ public class TestEntities extends LCCoreAbstractTest {
 		testParseMultipart("multipart2.raw");
 	}
 	
+	@SuppressWarnings("resource")
 	private void testParseMultipart(String filename) throws Exception {
 		MultipartEntity entity = new MultipartEntity("---------------------------114772229410704779042051621609".getBytes(), "form-data");
 		IOFromInputStream body = new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL);
@@ -152,8 +153,10 @@ public class TestEntities extends LCCoreAbstractTest {
 		Assert.assertEquals(2, m.getCount());
 		Assert.assertEquals("Hello tester", m.getBodyPart(0).getContent());
 		Assert.assertEquals("<html><body>Hello tester</body></html>", m.getBodyPart(1).getContent());
+		out.close();
 	}
 	
+	@SuppressWarnings("resource")
 	@Test(timeout=120000)
 	public void testFormData() throws Exception {
 		FormDataEntity form = new FormDataEntity();
@@ -173,7 +176,6 @@ public class TestEntities extends LCCoreAbstractTest {
 		copy.blockThrow(0);
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 
-		@SuppressWarnings("resource")
 		FormDataEntity parse = new FormDataEntity(form.getBoundary());
 		parse.parse(out, true).blockThrow(0);
 		Assert.assertEquals(2, parse.getFields().size());
@@ -229,7 +231,7 @@ public class TestEntities extends LCCoreAbstractTest {
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 		
 		MimeMessage mime = MimeUtil.parseMimeMessage(out).blockResult(0);
-		TextEntity parsed = TextEntity.from(mime).blockResult(0);
+		TextEntity parsed = TextEntity.from(mime, true).blockResult(0);
 		Assert.assertEquals("This is still a text", parsed.getText());
 		Assert.assertEquals(StandardCharsets.UTF_16, parsed.getCharset());
 		
@@ -264,10 +266,10 @@ public class TestEntities extends LCCoreAbstractTest {
 		MultipartEntity textAlt = MultipartEntity.from(part, true).blockResult(0);
 		Assert.assertEquals(2, textAlt.getParts().size());
 		MimeMessage textPart = textAlt.getParts().get(0);
-		TextEntity text = TextEntity.from(textPart).blockResult(0);
+		TextEntity text = TextEntity.from(textPart, true).blockResult(0);
 		Assert.assertEquals("Your email client does not support HTML emails", text.getText());
 		textPart = textAlt.getParts().get(1);
-		text = TextEntity.from(textPart).blockResult(0);
+		text = TextEntity.from(textPart, true).blockResult(0);
 		Assert.assertEquals("<html>Test Message<html>", text.getText());
 		
 		// part 2 is the email attachment

@@ -9,11 +9,16 @@ import net.lecousin.framework.network.mime.header.parser.Space;
 import net.lecousin.framework.network.mime.header.parser.Token;
 import net.lecousin.framework.network.mime.header.parser.Word;
 
+/** Internet address with an optional display name and an address.
+ * Example: My Name &lt;myname@email.com&gt;
+ */
 public class InternetAddressHeaderValue implements HeaderValueFormat {
 
+	/** Constructor. */
 	public InternetAddressHeaderValue() {
 	}
 
+	/** Constructor. */
 	public InternetAddressHeaderValue(String displayName, String address) {
 		this.displayName = displayName;
 		this.address = address;

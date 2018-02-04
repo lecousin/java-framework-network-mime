@@ -2,8 +2,10 @@ package net.lecousin.framework.network.mime.header.parser;
 
 import java.util.List;
 
+/** Address token. */
 public class Address implements Token {
 
+	/** Constructor. */
 	public Address(List<Token> tokens) {
 		this.tokens = tokens;
 	}

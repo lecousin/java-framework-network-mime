@@ -20,6 +20,7 @@ import net.lecousin.framework.io.encoding.QuotedPrintable;
 import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
 import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoderFactory;
 
+/** Utility methods for MIME Messages. */
 public final class MimeUtil {
 	
 	private MimeUtil() { /* no instance */ }
@@ -105,6 +106,7 @@ public final class MimeUtil {
 		return encodeValue(value, StandardCharsets.UTF_8);
 	}
 	
+	/** Create a MimeMessage with a Content-Type header and the body from the given string. */
 	@SuppressWarnings("resource")
 	public static MimeMessage mimeFromString(String content, Charset charset, String contentType) {
 		MimeMessage mime = new MimeMessage();
@@ -113,8 +115,10 @@ public final class MimeUtil {
 		return mime;
 	}
 	
+	/** Utility class to receive MIME header lines. */
 	public static class HeadersLinesReceiver {
 		
+		/** Constructor with the list of headers to fill. */
 		public HeadersLinesReceiver(List<MimeHeader> headers) {
 			this.headers = headers;
 		}
@@ -127,6 +131,7 @@ public final class MimeUtil {
 			return headers;
 		}
 		
+		/** Parse a new line. */
 		public void newLine(CharSequence line) throws Exception {
 			if (line.length() == 0) {
 				if (currentName != null) {
@@ -169,6 +174,7 @@ public final class MimeUtil {
 		}
 	}
 	
+	/** Parse the input and generate a MimeMessage. */
 	public static AsyncWork<MimeMessage, IOException> parseMimeMessage(IO.Readable.Buffered input) {
 		MessageParser parser = new MessageParser(input);
 		return parser.sp;

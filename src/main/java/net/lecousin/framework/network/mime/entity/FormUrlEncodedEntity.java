@@ -24,6 +24,7 @@ import net.lecousin.framework.util.Pair;
 /** Form parameters using x-www-form-urlencoded format. */
 public class FormUrlEncodedEntity extends MimeEntity {
 
+	/** Constructor. */
 	public FormUrlEncodedEntity() {
 		addHeaderRaw(CONTENT_TYPE, "application/x-www-form-urlencoded; charset=utf-8");
 	}
@@ -33,6 +34,9 @@ public class FormUrlEncodedEntity extends MimeEntity {
 		addHeaderRaw(CONTENT_TYPE, "application/x-www-form-urlencoded; charset=utf-8");
 	}
 	
+	/** Parse the body of the given MimeMessage into a FormUrlEncodedEntity.
+	 * @param fromReceived if true, the received body is parsed, else the body to send is parsed from the mime message.
+	 */
 	@SuppressWarnings("resource")
 	public static AsyncWork<FormUrlEncodedEntity, Exception> from(MimeMessage mime, boolean fromReceived) {
 		FormUrlEncodedEntity entity;

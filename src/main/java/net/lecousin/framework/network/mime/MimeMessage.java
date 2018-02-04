@@ -32,17 +32,21 @@ import net.lecousin.framework.util.UnprotectedStringBuffer;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+/** MIME Message (RFC 822). */
 public class MimeMessage {
 
 	public static final Log logger = LogFactory.getLog(MimeMessage.class);
 	
+	/** Constructor. */
 	public MimeMessage() {
 	}
 	
+	/** Constructor. */
 	public MimeMessage(List<MimeHeader> headers) {
 		this.headers.addAll(headers);
 	}
 
+	/** Constructor. */
 	public MimeMessage(MimeHeader... headers) {
 		for (MimeHeader h : headers)
 			this.headers.add(h);
@@ -56,6 +60,7 @@ public class MimeMessage {
 		return headers;
 	}
 	
+	/** Return the list of headers with the given name (case insensitive). */
 	public List<MimeHeader> getHeaders(String name) {
 		name = name.toLowerCase();
 		ArrayList<MimeHeader> list = new ArrayList<>();
@@ -65,6 +70,7 @@ public class MimeMessage {
 		return list;
 	}
 	
+	/** Return the list of headers values with the given name (case insensitive), parsed into the requested format. */
 	public <T extends HeaderValueFormat> List<T> getHeadersValues(String name, Class<T> format) throws Exception {
 		List<T> list = new LinkedList<>();
 		name = name.toLowerCase();
@@ -74,6 +80,7 @@ public class MimeMessage {
 		return list;
 	}
 	
+	/** Return the first header with the given name (case insensitive) or null. */
 	public MimeHeader getFirstHeader(String name) {
 		name = name.toLowerCase();
 		for (MimeHeader h : headers)
@@ -82,6 +89,7 @@ public class MimeMessage {
 		return null;
 	}
 	
+	/** Return the value of the first header with the given name (case insensitive) parsed into the requested format, or null. */
 	public <T extends HeaderValueFormat> T getFirstHeaderValue(String name, Class<T> format) throws Exception {
 		MimeHeader h = getFirstHeader(name);
 		if (h == null)
@@ -89,6 +97,7 @@ public class MimeMessage {
 		return h.getValue(format);
 	}
 	
+	/** Return the value of the first header with the given name (case insensitive), or null. */
 	public String getFirstHeaderRawValue(String name) {
 		MimeHeader h = getFirstHeader(name);
 		if (h == null)
@@ -96,6 +105,7 @@ public class MimeMessage {
 		return h.getRawValue();
 	}
 	
+	/** Return the value of the first header with the given name (case insensitive) parsed into a Long, or null. */
 	public Long getFirstHeaderLongValue(String name) {
 		MimeHeader h = getFirstHeader(name);
 		if (h == null)
@@ -107,37 +117,45 @@ public class MimeMessage {
 		}
 	}
 	
+	/** Return true if thie message contains at least one header with the given name (case insensitive). */
 	public boolean hasHeader(String name) {
 		return getFirstHeader(name) != null;
 	}
 	
+	/** Append a header. */
 	public void addHeaderRaw(String name, String rawValue) {
 		headers.add(new MimeHeader(name, rawValue));
 	}
 	
+	/** Append a header. */
 	public void addHeader(String name, HeaderValueFormat value) {
 		headers.add(new MimeHeader(name, value));
 	}
 	
+	/** Append a header. */
 	public void addHeader(MimeHeader header) {
 		headers.add(header);
 	}
-	
+
+	/** Remove any header with the same name, and append this new header. */
 	public void setHeaderRaw(String name, String rawValue) {
 		removeHeaders(name);
 		addHeaderRaw(name, rawValue);
 	}
 	
+	/** Remove any header with the same name, and append this new header. */
 	public void setHeader(String name, HeaderValueFormat value) {
 		removeHeaders(name);
 		addHeader(name, value);
 	}
 	
+	/** Remove any header with the same name, and append this new header. */
 	public void setHeader(MimeHeader header) {
 		removeHeaders(header.getName());
 		addHeader(header);
 	}
 	
+	/** Remove any header with the given name. */
 	public void removeHeaders(String name) {
 		name = name.toLowerCase();
 		for (Iterator<MimeHeader> it = headers.iterator(); it.hasNext(); )
@@ -145,11 +163,13 @@ public class MimeMessage {
 				it.remove();
 	}
 	
+	/** Generate headers into the given string. */
 	public void appendHeadersTo(StringBuilder s) {
 		for (MimeHeader h : headers)
 			h.appendTo(s);
 	}
 	
+	/** Generate headers into the given string. */
 	public void appendHeadersTo(IString s) {
 		for (MimeHeader h : headers)
 			h.appendTo(s);
@@ -169,14 +189,17 @@ public class MimeMessage {
 		return getFirstHeaderLongValue(CONTENT_LENGTH);
 	}
 	
+	/** Set the Content-Length header. */
 	public void setContentLength(long size) {
 		setHeaderRaw(CONTENT_LENGTH, Long.toString(size));
 	}
-	
+
+	/** Parse the Content-Type header and return it, or null if it is not present. */
 	public ParameterizedHeaderValue getContentType() throws Exception {
 		return getFirstHeaderValue(CONTENT_TYPE, ParameterizedHeaderValue.class);
 	}
 	
+	/** Parse the Content-Type header and return its main value, or null if it is not present. */
 	public String getContentTypeValue() {
 		try {
 			ParameterizedHeaderValue h = getContentType();
@@ -224,6 +247,7 @@ public class MimeMessage {
 		this.bodyToSend = body;
 	}
 	
+	/** Generate this MimeMessage into a Readable IO. */
 	@SuppressWarnings("resource")
 	public IO.Readable getReadableStream() {
 		UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));

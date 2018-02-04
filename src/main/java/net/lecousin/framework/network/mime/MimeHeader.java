@@ -6,14 +6,17 @@ import java.util.Map;
 import net.lecousin.framework.network.mime.header.HeaderValueFormat;
 import net.lecousin.framework.util.IString;
 
+/** Header of a MIME Message. */
 public class MimeHeader {
 
+	/** Constructor. */
 	public MimeHeader(String name, String rawValue) {
 		this.name = name;
 		this.nameLowerCase = name.toLowerCase();
 		this.rawValue = rawValue;
 	}
 	
+	/** Constructor. */
 	public MimeHeader(String name, HeaderValueFormat value) {
 		this.name = name;
 		this.nameLowerCase = name.toLowerCase();
@@ -34,6 +37,7 @@ public class MimeHeader {
 		return nameLowerCase;
 	}
 	
+	/** Return the value as a raw string. */
 	public String getRawValue() {
 		if (rawValue == null && parsed != null) {
 			StringBuilder s = new StringBuilder();
@@ -43,6 +47,7 @@ public class MimeHeader {
 		return rawValue;
 	}
 	
+	/** Return the value parsed into the requested format. */
 	public <T extends HeaderValueFormat> T getValue(Class<T> format) throws Exception {
 		if (parsed != null) {
 			@SuppressWarnings("unchecked")
@@ -59,17 +64,20 @@ public class MimeHeader {
 		return t;
 	}
 	
+	/** Set the value as a raw string. */
 	public void setRawValue(String raw) {
 		parsed = null;
 		rawValue = raw;
 	}
 	
+	/** Set the value in a specific format. */
 	public <T extends HeaderValueFormat> void setValue(T value) {
 		rawValue = null;
 		parsed = new HashMap<>(5);
 		parsed.put(value.getClass(), value);
 	}
 	
+	/** Generate this header into the given string. */
 	public void appendTo(StringBuilder s) {
 		s.append(name).append(": ");
 		if (rawValue == null && parsed != null) {
@@ -79,6 +87,7 @@ public class MimeHeader {
 		s.append("\r\n");
 	}
 	
+	/** Generate this header into the given string. */
 	public void appendTo(IString s) {
 		s.append(name).append(": ");
 		if (rawValue == null && parsed != null) {

@@ -13,8 +13,12 @@ import net.lecousin.framework.network.mime.MimeMessage;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.util.UnprotectedStringBuffer;
 
+/**
+ * Text entity.
+ */
 public class TextEntity extends MimeEntity {
 
+	/** Constructor. */
 	public TextEntity(String text, Charset charset, String textMimeType) {
 		this.text = text;
 		this.charset = charset;
@@ -31,12 +35,15 @@ public class TextEntity extends MimeEntity {
 			charset = Charset.forName(type.getParameter("charset"));
 	}
 	
+	/** Parse the body of the given MimeMessage into a TextEntity.
+	 * @param fromReceived if true, the received body is parsed, else the body to send is parsed from the mime message.
+	 */
 	@SuppressWarnings("resource")
-	public static AsyncWork<TextEntity, IOException> from(MimeMessage mime) {
+	public static AsyncWork<TextEntity, IOException> from(MimeMessage mime, boolean fromReceived) {
 		TextEntity entity;
 		try { entity = new TextEntity(mime); }
 		catch (Exception e) { return new AsyncWork<>(null, IO.error(e)); }
-		IO.Readable body = mime.getBodyReceivedAsInput();
+		IO.Readable body = fromReceived ? mime.getBodyReceivedAsInput() : mime.getBodyToSend();
 		if (body == null)
 			return new AsyncWork<>(entity, null);
 		Task<UnprotectedStringBuffer, IOException> task = IOUtil.readFullyAsString(body, entity.charset, body.getPriority());
@@ -64,6 +71,7 @@ public class TextEntity extends MimeEntity {
 		return charset;
 	}
 	
+	/** Set the charset to encode the text. */
 	public void setCharset(Charset charset) throws Exception {
 		if (charset.equals(this.charset)) return;
 		this.charset = charset;

@@ -1,7 +1,9 @@
 package net.lecousin.framework.network.mime.header.parser;
 
+/** Special character token. */
 public class SpecialCharacter implements Token {
 
+	/** Constructor. */
 	public SpecialCharacter(char c) {
 		this.c = c;
 	}

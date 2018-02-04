@@ -1,7 +1,9 @@
 package net.lecousin.framework.network.mime.header.parser;
 
+/** Word (text) token. */
 public class Word implements Token {
 
+	/** Constructor. */
 	public Word(String str) {
 		this.word = str;
 	}
