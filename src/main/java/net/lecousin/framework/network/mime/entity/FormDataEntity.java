@@ -26,8 +26,8 @@ import net.lecousin.framework.io.encoding.QuotedPrintable;
 import net.lecousin.framework.network.mime.MimeHeader;
 import net.lecousin.framework.network.mime.MimeMessage;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
-import net.lecousin.framework.network.mime.transfer.TransferEncodingFactory;
 import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
+import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoderFactory;
 import net.lecousin.framework.network.mime.transfer.encoding.IdentityDecoder;
 import net.lecousin.framework.util.AsyncCloseable;
 import net.lecousin.framework.util.Pair;
@@ -166,7 +166,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 	
 	@SuppressWarnings("resource")
 	@Override
-	protected AsyncWork<MimeMessage, IOException> createPart(List<MimeHeader> headers, IOInMemoryOrFile body) {
+	protected AsyncWork<MimeMessage, IOException> createPart(List<MimeHeader> headers, IOInMemoryOrFile body, boolean asReceived) {
 		try {
 			ParameterizedHeaderValue dispo = null;
 			for (MimeHeader h : headers)
@@ -199,8 +199,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 				}
 
 				ByteBuffersIO out = new ByteBuffersIO(false, "form-data field value", Task.PRIORITY_NORMAL);
-				ContentDecoder decoder = new IdentityDecoder(out);
-				decoder = TransferEncodingFactory.createDecoder(decoder, new MimeMessage(headers));
+				ContentDecoder decoder = ContentDecoderFactory.createDecoder(out, new MimeMessage(headers));
 				AsyncWork<MimeMessage, IOException> result = new AsyncWork<>();
 				if (decoder instanceof IdentityDecoder) {
 					readField(fieldName, body, charset, result); // no encoding
@@ -214,8 +213,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 			File tmp = File.createTempFile("formData", "file");
 			tmp.deleteOnExit();
 			FileIO.ReadWrite io = new FileIO.ReadWrite(tmp, Task.PRIORITY_NORMAL);
-			ContentDecoder decoder = new IdentityDecoder(io);
-			decoder = TransferEncodingFactory.createDecoder(decoder, new MimeMessage(headers));
+			ContentDecoder decoder = ContentDecoderFactory.createDecoder(io, new MimeMessage(headers));
 			if (decoder instanceof IdentityDecoder) {
 				io.closeAsync().listenInline(() -> {
 					new RemoveFileTask(tmp, Task.PRIORITY_LOW).start();

@@ -27,6 +27,7 @@ import net.lecousin.framework.network.mime.entity.FormDataEntity.PartFile;
 import net.lecousin.framework.network.mime.entity.FormUrlEncodedEntity;
 import net.lecousin.framework.network.mime.entity.MimeEntity;
 import net.lecousin.framework.network.mime.entity.MultipartEntity;
+import net.lecousin.framework.network.mime.entity.TextEntity;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.util.Pair;
 
@@ -49,11 +50,6 @@ public class TestEntities extends LCCoreAbstractTest {
 		source.add("key+%@=1", "value=%1");
 		source.add("key\"2", "value'2");
 		check(source);
-		
-		MimeMessage mime = MimeUtil.parseMimeMessage(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("formurlencoded.raw"), "formurlencoded.raw", Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL), 4096)).blockResult(0);
-		FormUrlEncodedEntity entity = FormUrlEncodedEntity.from(mime).blockResult(0);
-		Assert.assertEquals("Cosby", entity.getParameter("home"));
-		Assert.assertEquals("flies", entity.getParameter("favorite flavor"));
 	}
 	
 	@SuppressWarnings("resource")
@@ -85,6 +81,15 @@ public class TestEntities extends LCCoreAbstractTest {
 		return out;
 	}
 	
+	@Test(timeout=60000)
+	public void testParseFormUrlEncodedEntity() throws Exception {
+		@SuppressWarnings("resource")
+		MimeMessage mime = MimeUtil.parseMimeMessage(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("formurlencoded.raw"), "formurlencoded.raw", Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL), 4096)).blockResult(0);
+		FormUrlEncodedEntity entity = FormUrlEncodedEntity.from(mime, true).blockResult(0);
+		Assert.assertEquals("Cosby", entity.getParameter("home"));
+		Assert.assertEquals("flies", entity.getParameter("favorite flavor"));
+	}
+	
 	@Test(timeout=120000)
 	public void testParseMultipart() throws Exception {
 		testParseMultipart("multipart1.raw");
@@ -97,7 +102,8 @@ public class TestEntities extends LCCoreAbstractTest {
 	
 	private void testParseMultipart(String filename) throws Exception {
 		MultipartEntity entity = new MultipartEntity("---------------------------114772229410704779042051621609".getBytes(), "form-data");
-		SynchronizationPoint<IOException> parse = entity.parse(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL));
+		IOFromInputStream body = new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL);
+		SynchronizationPoint<IOException> parse = entity.parse(body, true);
 		parse.blockThrow(0);
 		Assert.assertEquals(5, entity.getParts().size());
 		for (MimeMessage p : entity.getParts()) {
@@ -105,9 +111,9 @@ public class TestEntities extends LCCoreAbstractTest {
 			Assert.assertEquals("form-data", dispo.getMainValue());
 			String name = dispo.getParameter("name");
 			if ("name".equals(name)) {
-				Assert.assertEquals("AJ ONeal", IOUtil.readFullyAsStringSync(p.getBodyToSend(), StandardCharsets.US_ASCII));
+				Assert.assertEquals("AJ ONeal", IOUtil.readFullyAsStringSync(p.getBodyReceivedAsInput(), StandardCharsets.US_ASCII));
 			} else if ("email".equals(name)) {
-				Assert.assertEquals("coolaj86@gmail.com", IOUtil.readFullyAsStringSync(p.getBodyToSend(), StandardCharsets.US_ASCII));
+				Assert.assertEquals("coolaj86@gmail.com", IOUtil.readFullyAsStringSync(p.getBodyReceivedAsInput(), StandardCharsets.US_ASCII));
 			} else if ("avatar".equals(name)) {
 				// png
 				Assert.assertEquals("image/png", p.getContentTypeValue());
@@ -167,7 +173,7 @@ public class TestEntities extends LCCoreAbstractTest {
 
 		@SuppressWarnings("resource")
 		FormDataEntity parse = new FormDataEntity(form.getBoundary());
-		parse.parse(out).blockThrow(0);
+		parse.parse(out, true).blockThrow(0);
 		Assert.assertEquals(2, parse.getFields().size());
 		Assert.assertEquals("1", parse.getFieldValue("test"));
 		Assert.assertEquals("world", parse.getFieldValue("hello"));
@@ -185,6 +191,31 @@ public class TestEntities extends LCCoreAbstractTest {
 		out.close();
 		gzip.close();
 		gz.close();
+	}
+	
+	@Test(timeout=600000)
+	public void testParseEML() throws Exception {
+		@SuppressWarnings("resource")
+		MimeMessage mime = MimeUtil.parseMimeMessage(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("html-attachment-encoded-filename.eml"), "html-attachment-encoded-filename.eml", Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL), 4096)).blockResult(0);
+		MultipartEntity eml = MultipartEntity.from(mime, true).blockResult(0);
+		Assert.assertEquals(2, eml.getParts().size());
+
+		// part 1 is the mail with alternative plain and html
+		MimeMessage part = eml.getParts().get(0);
+		MultipartEntity textAlt = MultipartEntity.from(part, true).blockResult(0);
+		Assert.assertEquals(2, textAlt.getParts().size());
+		MimeMessage textPart = textAlt.getParts().get(0);
+		TextEntity text = TextEntity.from(textPart).blockResult(0);
+		Assert.assertEquals("Your email client does not support HTML emails", text.getText());
+		textPart = textAlt.getParts().get(1);
+		text = TextEntity.from(textPart).blockResult(0);
+		Assert.assertEquals("<html>Test Message<html>", text.getText());
+		
+		// part 2 is the email attachment
+		part = eml.getParts().get(1);
+		ParameterizedHeaderValue dispo = part.getFirstHeaderValue(MimeMessage.CONTENT_DISPOSITION, ParameterizedHeaderValue.class);
+		Assert.assertNotNull(dispo);
+		Assert.assertEquals("Test_Attachment_-_a>ä,_o>ö,_u>ü,_au>äu", dispo.getParameter("filename"));
 	}
 	
 }

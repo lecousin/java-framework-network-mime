@@ -6,7 +6,9 @@ import java.util.Map;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 /** Default MIME type by file extension. */
-public abstract class MimeType {
+public final class MimeType {
+	
+	private MimeType() { /* no instance */ }
 
 	public static final String HTML = "text/html";
 	public static final String XML = "text/xml";
@@ -20,6 +22,8 @@ public abstract class MimeType {
 	
 	@SuppressFBWarnings("MS_MUTABLE_COLLECTION_PKGPROTECT")
 	public static final Map<String,String> defaultByExtension = new HashMap<>();
+	
+	public static final Map<String,String> normalized = new HashMap<>();
 	
 	static {
 		defaultByExtension.put("html", HTML);

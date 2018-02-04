@@ -9,6 +9,8 @@ import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
+import net.lecousin.framework.network.mime.transfer.TransferEncodingFactory;
+import net.lecousin.framework.network.mime.transfer.TransferReceiver;
 import net.lecousin.framework.network.server.TCPServerClient;
 import net.lecousin.framework.network.server.protocol.ServerProtocol;
 
@@ -39,7 +41,8 @@ public class TestTransferProtocol implements ServerProtocol {
 				}
 				ByteBuffersIO body = (ByteBuffersIO)client.getAttribute("body");
 				if (body != null) {
-					receiveBody(client, mime, body, data, onbufferavailable);
+					TransferReceiver transfer = (TransferReceiver)client.getAttribute("transfer");
+					receiveBody(client, mime, transfer, body, data, onbufferavailable);
 					return null;
 				}
 				MimeUtil.HeadersLinesReceiver linesReceiver = (MimeUtil.HeadersLinesReceiver)client.getAttribute("mime_lines");
@@ -68,16 +71,19 @@ public class TestTransferProtocol implements ServerProtocol {
 						}
 						if (s.length() == 0) {
 							body = new ByteBuffersIO(true, "body", Task.PRIORITY_NORMAL);
-							try { mime.initBodyTransfer(body); }
+							mime.setBodyReceived(body);
+							TransferReceiver transfer;
+							try { transfer = TransferEncodingFactory.create(mime, body); }
 							catch (Throwable t) {
 								t.printStackTrace(System.err);
 								client.close();
 								return null;
 							}
+							client.setAttribute("transfer", transfer);
 							client.setAttribute("body", body);
 							client.removeAttribute("mime_line");
 							client.removeAttribute("mime_lines");
-							receiveBody(client, mime, body, data, onbufferavailable);
+							receiveBody(client, mime, transfer, body, data, onbufferavailable);
 							return null;
 						}
 						line = new StringBuilder(128);
@@ -100,8 +106,8 @@ public class TestTransferProtocol implements ServerProtocol {
 		return false;
 	}
 	
-	private static void receiveBody(TCPServerClient client, MimeMessage mime, ByteBuffersIO body, ByteBuffer data, Runnable onbufferavailable) {
-		mime.bodyDataReady(data).listenInline((result) -> {
+	private static void receiveBody(TCPServerClient client, MimeMessage mime, TransferReceiver transfer, ByteBuffersIO body, ByteBuffer data, Runnable onbufferavailable) {
+		transfer.consume(data).listenInline((result) -> {
 			LCCore.getApplication().getDefaultLogger().info("Test data from client consumed, end reached = " + result);
 			data.clear();
 			data.flip();

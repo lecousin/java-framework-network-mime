@@ -17,6 +17,8 @@ import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.IOInMemoryOrFile;
 import net.lecousin.framework.io.encoding.Base64;
 import net.lecousin.framework.io.encoding.QuotedPrintable;
+import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
+import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoderFactory;
 
 public final class MimeUtil {
 	
@@ -185,6 +187,7 @@ public final class MimeUtil {
 		private MimeMessage mime;
 		private MimeUtil.HeadersLinesReceiver header;
 		private StringBuilder headerLine = new StringBuilder(128);
+		private ContentDecoder bodyDecoder = null;
 		
 		public void nextBuffer() {
 			io.readNextBufferAsync().listenInline(
@@ -194,21 +197,24 @@ public final class MimeUtil {
 		}
 		
 		private void parse(ByteBuffer buffer) {
-			if (buffer == null) {
-				sp.error(new EOFException("Unexpected end of MIME message"));
+			if (header == null) {
+				if (buffer == null) {
+					bodyDecoder.endOfData().listenInline(() -> {
+						((IOInMemoryOrFile)mime.getBodyReceivedAsInput())
+						.seekAsync(SeekType.FROM_BEGINNING, 0)
+						.listenInline(() -> {
+							sp.unblockSuccess(mime);
+						}, sp);
+					}, sp);
+					return;
+				}
+				bodyDecoder.decode(buffer).listenInline(() -> {
+					nextBuffer();
+				}, sp);
 				return;
 			}
-			if (header == null) {
-				mime.bodyDataReady(buffer).listenInline((end) -> {
-					if (end.booleanValue()) {
-						((IOInMemoryOrFile)mime.getBodyReceivedAsInput())
-							.seekAsync(SeekType.FROM_BEGINNING, 0)
-							.listenInline(() -> {
-								sp.unblockSuccess(mime);
-							}, sp);
-					} else
-						nextBuffer();
-				}, sp);
+			if (buffer == null) {
+				sp.error(new EOFException("Unexpected end of MIME message"));
 				return;
 			}
 			new Task.Cpu<Void, NoException>("Parsing MIME Message", io.getPriority()) {
@@ -245,11 +251,10 @@ public final class MimeUtil {
 		}
 		
 		private void setBody(ByteBuffer buffer) {
-			try { mime.initBodyTransfer(new IOInMemoryOrFile(65536, io.getPriority(), "MIME body from " + io.getSourceDescription())); }
-			catch (IOException e) {
-				sp.error(e);
-				return;
-			}
+			@SuppressWarnings("resource")
+			IOInMemoryOrFile body = new IOInMemoryOrFile(65536, io.getPriority(), "MIME body from " + io.getSourceDescription());
+			bodyDecoder = ContentDecoderFactory.createDecoder(body, mime);
+			mime.setBodyReceived(body);
 			header = null;
 			parse(buffer);
 		}

@@ -55,15 +55,15 @@ public class MultipartEntity extends MimeEntity {
 	}
 	
 	@SuppressWarnings("resource")
-	public static AsyncWork<MultipartEntity, Exception> from(MimeMessage mime) {
+	public static AsyncWork<MultipartEntity, Exception> from(MimeMessage mime, boolean fromReceived) {
 		MultipartEntity entity;
 		try { entity = new MultipartEntity(mime); }
 		catch (Exception e) { return new AsyncWork<>(null, e); }
 		
-		IO.Readable body = mime.getBodyReceivedAsInput();
+		IO.Readable body = fromReceived ? mime.getBodyReceivedAsInput() : mime.getBodyToSend();
 		if (body == null)
 			return new AsyncWork<>(entity, null);
-		SynchronizationPoint<IOException> parse = entity.parse(body);
+		SynchronizationPoint<IOException> parse = entity.parse(body, fromReceived);
 		AsyncWork<MultipartEntity, Exception> result = new AsyncWork<>();
 		parse.listenInlineSP(() -> { result.unblockSuccess(entity); }, result);
 		parse.listenInline(() -> { body.closeAsync(); });
@@ -167,36 +167,43 @@ public class MultipartEntity extends MimeEntity {
 		return new LinkedIO.Readable("MIME form-data", ios);
 	}
 	
-	/** Parse the given content. */
+	/** Parse the given content.
+	 * @param asReceived if true the received body is filled, else the body to send is filled
+	 */
 	@SuppressWarnings("resource")
-	public SynchronizationPoint<IOException> parse(IO.Readable content) {
+	public SynchronizationPoint<IOException> parse(IO.Readable content, boolean asReceived) {
 		IO.Readable.Buffered bio;
 		if (content instanceof IO.Readable.Buffered)
 			bio = (IO.Readable.Buffered)content;
 		else
 			bio = new SimpleBufferedReadable(content, 8192);
 		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
-		Parser parser = new Parser(bio, sp);
+		Parser parser = new Parser(bio, sp, asReceived);
 		parser.nextBuffer();
 		return sp;
 	}
 	
-	protected AsyncWork<MimeMessage, IOException> createPart(List<MimeHeader> headers, IOInMemoryOrFile body) {
+	protected AsyncWork<MimeMessage, IOException> createPart(List<MimeHeader> headers, IOInMemoryOrFile body, boolean asReceived) {
 		MimeMessage mime = new MimeMessage();
 		mime.getHeaders().addAll(headers);
-		mime.setBodyToSend(body);
+		if (asReceived)
+			mime.setBodyReceived(body);
+		else
+			mime.setBodyToSend(body);
 		return new AsyncWork<>(mime, null);
 	}
 			
 	private class Parser {
 		
-		public Parser(IO.Readable.Buffered io, SynchronizationPoint<IOException> sp) {
+		public Parser(IO.Readable.Buffered io, SynchronizationPoint<IOException> sp, boolean asReceived) {
 			this.io = io;
 			this.sp = sp;
+			this.asReceived = asReceived;
 		}
 		
 		private IO.Readable.Buffered io;
 		private SynchronizationPoint<IOException> sp;
+		private boolean asReceived;
 		private byte[] boundaryRead = null;
 		private int boundaryPos = 0;
 		private boolean firstBoundary = true;
@@ -263,8 +270,10 @@ public class MultipartEntity extends MimeEntity {
 								bodyBuffer[bodyBufferPos++] = b;
 								if (bodyBufferPos == bodyBuffer.length) {
 									body.writeAsync(ByteBuffer.wrap(bodyBuffer)).listenInline(
-										(written) -> { parse(buffer); },
-										sp
+										(written) -> {
+											bodyBufferPos = 0;
+											parse(buffer);
+										}, sp
 									);
 									return null;
 								}
@@ -359,6 +368,8 @@ public class MultipartEntity extends MimeEntity {
 		
 		private boolean notBoundary(ByteBuffer buffer) {
 			firstBoundary = false;
+			// go back
+			buffer.position(buffer.position() - 1);
 			if (body == null) {
 				boundaryPos = 0;
 				return true;
@@ -366,10 +377,10 @@ public class MultipartEntity extends MimeEntity {
 			for (int i = 0; i < boundaryPos; ++i) {
 				bodyBuffer[bodyBufferPos++] = boundaryRead[i];
 				if (bodyBufferPos == bodyBuffer.length) {
-					int j = i;
+					int j = i + 1;
 					body.writeAsync(ByteBuffer.wrap(bodyBuffer)).listenInline(
 						(written) -> {
-							if (j < boundaryPos - 1) {
+							if (j < boundaryPos) {
 								System.arraycopy(boundaryRead, j, bodyBuffer, 0, boundaryPos - j);
 								bodyBufferPos = boundaryPos - j;
 							} else {
@@ -384,6 +395,7 @@ public class MultipartEntity extends MimeEntity {
 					return false;
 				}
 			}
+			boundaryPos = 0;
 			return true;
 		}
 		
@@ -401,7 +413,7 @@ public class MultipartEntity extends MimeEntity {
 			}
 			// then we create the part
 			body.seekSync(SeekType.FROM_BEGINNING, 0);
-			MultipartEntity.this.createPart(header.getHeaders(), body).listenInline(
+			MultipartEntity.this.createPart(header.getHeaders(), body, asReceived).listenInline(
 				(part) -> {
 					parts.add(part);
 					if (buffer != null) {

@@ -34,12 +34,12 @@ public class FormUrlEncodedEntity extends MimeEntity {
 	}
 	
 	@SuppressWarnings("resource")
-	public static AsyncWork<FormUrlEncodedEntity, Exception> from(MimeMessage mime) {
+	public static AsyncWork<FormUrlEncodedEntity, Exception> from(MimeMessage mime, boolean fromReceived) {
 		FormUrlEncodedEntity entity;
 		try { entity = new FormUrlEncodedEntity(mime); }
 		catch (Exception e) { return new AsyncWork<>(null, e); }
 		
-		IO.Readable body = mime.getBodyReceivedAsInput();
+		IO.Readable body = fromReceived ? mime.getBodyReceivedAsInput() : mime.getBodyToSend();
 		if (body == null)
 			return new AsyncWork<>(entity, null);
 		Charset charset = null;

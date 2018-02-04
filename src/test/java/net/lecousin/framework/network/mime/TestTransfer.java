@@ -20,6 +20,8 @@ import net.lecousin.framework.io.encoding.Base64;
 import net.lecousin.framework.io.encoding.QuotedPrintable;
 import net.lecousin.framework.log.Logger.Level;
 import net.lecousin.framework.network.client.TCPClient;
+import net.lecousin.framework.network.mime.transfer.TransferEncodingFactory;
+import net.lecousin.framework.network.mime.transfer.TransferReceiver;
 import net.lecousin.framework.network.server.TCPServer;
 import net.lecousin.framework.network.test.AbstractNetworkTest;
 
@@ -63,14 +65,15 @@ public class TestTransfer extends AbstractNetworkTest {
 		answer.readHeader(client, 10000).blockThrow(0);
 		Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
 		ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
-		answer.initBodyTransfer(body);
+		answer.setBodyReceived(body);
+		TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
 		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
 		client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
 			@Override
 			public void fire(ByteBuffer buf) {
 				System.out.println("Client received body data from server: " + buf.remaining());
 				Listener<ByteBuffer> that = this;
-				answer.bodyDataReady(buf).listenInline((end) -> {
+				transfer.consume(buf).listenInline((end) -> {
 					if (end.booleanValue())
 						sp.unblock();
 					else
@@ -111,14 +114,15 @@ public class TestTransfer extends AbstractNetworkTest {
 		answer.readHeader(client, 10000).blockThrow(0);
 		Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
 		ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
-		answer.initBodyTransfer(body);
+		answer.setBodyReceived(body);
+		TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
 		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
 		client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
 			@Override
 			public void fire(ByteBuffer buf) {
 				System.out.println("Client received body data from server: " + buf.remaining());
 				Listener<ByteBuffer> that = this;
-				answer.bodyDataReady(buf).listenInline((end) -> {
+				transfer.consume(buf).listenInline((end) -> {
 					if (end.booleanValue())
 						sp.unblock();
 					else
@@ -157,14 +161,15 @@ public class TestTransfer extends AbstractNetworkTest {
 		Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
 		Assert.assertEquals("chunked", answer.getFirstHeaderRawValue(MimeMessage.TRANSFER_ENCODING));
 		ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
-		answer.initBodyTransfer(body);
+		answer.setBodyReceived(body);
+		TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
 		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
 		client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
 			@Override
 			public void fire(ByteBuffer buf) {
 				System.out.println("Client received body data from server: " + buf.remaining());
 				Listener<ByteBuffer> that = this;
-				answer.bodyDataReady(buf).listenInline((end) -> {
+				transfer.consume(buf).listenInline((end) -> {
 					if (end.booleanValue())
 						sp.unblock();
 					else
@@ -207,14 +212,15 @@ public class TestTransfer extends AbstractNetworkTest {
 		Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
 		Assert.assertEquals("chunked", answer.getFirstHeaderRawValue(MimeMessage.TRANSFER_ENCODING));
 		ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
-		answer.initBodyTransfer(body);
+		answer.setBodyReceived(body);
+		TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
 		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
 		client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
 			@Override
 			public void fire(ByteBuffer buf) {
 				System.out.println("Client received body data from server: " + buf.remaining());
 				Listener<ByteBuffer> that = this;
-				answer.bodyDataReady(buf).listenInline((end) -> {
+				transfer.consume(buf).listenInline((end) -> {
 					if (end.booleanValue())
 						sp.unblock();
 					else
@@ -309,7 +315,8 @@ public class TestTransfer extends AbstractNetworkTest {
 		answer.readHeader(client, 10000).blockThrow(0);
 		//Assert.assertEquals(encoding, answer.getHeaderSingleValue(MIME.CONTENT_ENCODING));
 		ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
-		answer.initBodyTransfer(body);
+		answer.setBodyReceived(body);
+		TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
 		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
 		client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
 			@Override
@@ -320,7 +327,7 @@ public class TestTransfer extends AbstractNetworkTest {
 				}
 				System.out.println("Client received body data from server: " + buf.remaining());
 				Listener<ByteBuffer> that = this;
-				answer.bodyDataReady(buf).listenInline((end) -> {
+				transfer.consume(buf).listenInline((end) -> {
 					if (end.booleanValue())
 						sp.unblock();
 					else

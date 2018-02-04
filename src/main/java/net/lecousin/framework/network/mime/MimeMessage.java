@@ -25,8 +25,6 @@ import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValues;
 import net.lecousin.framework.network.mime.transfer.ChunkedTransfer;
 import net.lecousin.framework.network.mime.transfer.IdentityTransfer;
-import net.lecousin.framework.network.mime.transfer.TransferEncodingFactory;
-import net.lecousin.framework.network.mime.transfer.TransferReceiver;
 import net.lecousin.framework.util.IString;
 import net.lecousin.framework.util.UnprotectedString;
 import net.lecousin.framework.util.UnprotectedStringBuffer;
@@ -195,40 +193,18 @@ public class MimeMessage {
 	// ***** Receive Body *****
 
 	private IO.Writable bodyReceived = null;
-	private TransferReceiver bodyTransfer = null;
 	
-	/**
-	 * Prepare to receive the body and save it to the given output. The transfer is instantiated by using
-	 * {@link TransferEncodingFactory#create} method, which uses the Transfer-Encoding,
-	 * Content-Transfer-Encoding and Content-Encoding headers to decode data.
-	 * It returns true if no data is expected, false if data is expected.
-	 * If data is expected, calls to the method (@link {@link #bodyDataReady(ByteBuffer)} should be done.
-	 */
-	public <T extends IO.Writable & IO.Readable> boolean initBodyTransfer(T output) throws IOException {
+	/** Set the IO that receive the body and can be read later on. */
+	public <T extends IO.Writable & IO.Readable> void setBodyReceived(T output) {
 		bodyReceived = output;
-		bodyTransfer = TransferEncodingFactory.create(this, output);
-		if (logger.isDebugEnabled())
-			logger.debug("Body transfer initialized with " + bodyTransfer + ", something to read: " + (bodyTransfer.isExpectingData()));
-		return !bodyTransfer.isExpectingData();
 	}
 	
-	/**
-	 * Receive some data of the body, using the transfer initialized by the method
-	 * {@link #initBodyTransfer(net.lecousin.framework.io.IO.Writable)}.
-	 * True is returned if the end of the body has been reached.
-	 */
-	public AsyncWork<Boolean, IOException> bodyDataReady(ByteBuffer data) {
-		if (logger.isTraceEnabled())
-			logger.trace("Body data ready, consume it: " + data.remaining() + " bytes");
-		return bodyTransfer.consume(data);
-	}
-	
-	/** Return the body previously set by {@link #initBodyTransfer(net.lecousin.framework.io.IO.Writable)}. */
+	/** Return the body previously set by {@link #setBodyReceived(net.lecousin.framework.io.IO.Writable)}. */
 	public IO.Writable getBodyReceivedAsOutput() {
 		return bodyReceived;
 	}
 	
-	/** Return the body previously set by {@link #initBodyTransfer(net.lecousin.framework.io.IO.Writable)}. */
+	/** Return the body previously set by {@link #setBodyReceived(net.lecousin.framework.io.IO.Writable)}. */
 	public IO.Readable getBodyReceivedAsInput() {
 		return (IO.Readable)bodyReceived;
 	}
