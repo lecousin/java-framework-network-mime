@@ -210,6 +210,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 				return result;
 			}
 			// considered as a file
+			// TODO use TemporaryFiles.createFileAsync
 			File tmp = File.createTempFile("formData", "file");
 			tmp.deleteOnExit();
 			FileIO.ReadWrite io = new FileIO.ReadWrite(tmp, Task.PRIORITY_NORMAL);

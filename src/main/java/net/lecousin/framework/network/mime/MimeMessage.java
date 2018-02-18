@@ -9,10 +9,9 @@ import java.util.LinkedList;
 import java.util.List;
 
 import net.lecousin.framework.collections.LinkedArrayList;
-import net.lecousin.framework.concurrent.CancelException;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.synch.AsyncWork;
-import net.lecousin.framework.concurrent.synch.AsyncWork.AsyncWorkListener;
+import net.lecousin.framework.concurrent.synch.AsyncWork.AsyncWorkListenerReady;
 import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
 import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
 import net.lecousin.framework.io.IO;
@@ -275,41 +274,28 @@ public class MimeMessage {
 		if (logger.isDebugEnabled())
 			logger.debug("Receiving header lines...");
 		MimeUtil.HeadersLinesReceiver linesReceiver = new MimeUtil.HeadersLinesReceiver(headers);
-		AsyncWork<ByteArrayIO,IOException> line = client.getReceiver().readUntil((byte)'\n', 1024, timeout);
-		line.listenInline(new AsyncWorkListener<ByteArrayIO, IOException>() {
-			@Override
-			public void ready(ByteArrayIO line) {
-				String s = line.getAsString(StandardCharsets.US_ASCII);
+		AsyncWork<ByteArrayIO,IOException> readLine = client.getReceiver().readUntil((byte)'\n', 1024, timeout);
+		readLine.listenInline(new AsyncWorkListenerReady<ByteArrayIO, IOException>((line, that) -> {
+			String s = line.getAsString(StandardCharsets.US_ASCII);
+			if (logger.isDebugEnabled())
+				logger.debug("Header line received: " + s);
+			int i = s.indexOf('\r');
+			if (i >= 0) s = s.substring(0,i);
+			i = s.indexOf('\n');
+			if (i >= 0) s = s.substring(0,i);
+			try { linesReceiver.newLine(s); }
+			catch (Exception e) {
+				result.error(IO.error(e));
+				return;
+			}
+			if (s.length() == 0) {
 				if (logger.isDebugEnabled())
-					logger.debug("Header line received: " + s);
-				int i = s.indexOf('\r');
-				if (i >= 0) s = s.substring(0,i);
-				i = s.indexOf('\n');
-				if (i >= 0) s = s.substring(0,i);
-				try { linesReceiver.newLine(s); }
-				catch (Exception e) {
-					result.error(IO.error(e));
-					return;
-				}
-				if (s.length() == 0) {
-					if (logger.isDebugEnabled())
-						logger.debug("End of header lines");
-					result.unblock();
-					return;
-				}
-				client.getReceiver().readUntil((byte)'\n', 1024, timeout).listenInline(this);
+					logger.debug("End of header lines");
+				result.unblock();
+				return;
 			}
-			
-			@Override
-			public void error(IOException error) {
-				result.error(error);
-			}
-			
-			@Override
-			public void cancelled(CancelException event) {
-				result.cancel(event);
-			}
-		});
+			client.getReceiver().readUntil((byte)'\n', 1024, timeout).listenInline(that);
+		}, result));
 		return result;
 	}
 	
