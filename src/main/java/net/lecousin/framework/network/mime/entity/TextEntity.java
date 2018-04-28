@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
-import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.synch.AsyncWork;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.IOUtil;
@@ -46,9 +45,9 @@ public class TextEntity extends MimeEntity {
 		IO.Readable body = fromReceived ? mime.getBodyReceivedAsInput() : mime.getBodyToSend();
 		if (body == null)
 			return new AsyncWork<>(entity, null);
-		Task<UnprotectedStringBuffer, IOException> task = IOUtil.readFullyAsString(body, entity.charset, body.getPriority());
+		AsyncWork<UnprotectedStringBuffer, IOException> task = IOUtil.readFullyAsString(body, entity.charset, body.getPriority());
 		AsyncWork<TextEntity, IOException> result = new AsyncWork<>();
-		task.getOutput().listenInline((str) -> {
+		task.listenInline((str) -> {
 			entity.text = str.asString();
 			result.unblockSuccess(entity);
 		}, result);

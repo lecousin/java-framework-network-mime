@@ -233,7 +233,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 	}
 	
 	private static void readField(String fieldName, IO.Readable content, Charset charset, AsyncWork<MimeMessage, IOException> result) {
-		AsyncWork<UnprotectedStringBuffer, IOException> read = IOUtil.readFullyAsString(content, charset, Task.PRIORITY_NORMAL).getOutput();
+		AsyncWork<UnprotectedStringBuffer, IOException> read = IOUtil.readFullyAsString(content, charset, Task.PRIORITY_NORMAL);
 		read.listenInline(() -> {
 			if (read.hasError()) {
 				result.error(read.getError());

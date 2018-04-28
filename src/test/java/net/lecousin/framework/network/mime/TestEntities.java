@@ -144,7 +144,7 @@ public class TestEntities extends LCCoreAbstractTest {
 		System.out.println("_____________ End of Mail ___________");
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 		javax.mail.Session session = javax.mail.Session.getInstance(new Properties());
-		javax.mail.internet.MimeMessage mail = new javax.mail.internet.MimeMessage(session, IOAsInputStream.get(out));
+		javax.mail.internet.MimeMessage mail = new javax.mail.internet.MimeMessage(session, IOAsInputStream.get(out, false));
 		Assert.assertEquals("This is a test", mail.getSubject());
 		Object content = mail.getContent();
 		Assert.assertTrue(content instanceof MimeMultipart);
