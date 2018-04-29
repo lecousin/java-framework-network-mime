@@ -6,7 +6,6 @@ import java.util.LinkedList;
 
 import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
 import net.lecousin.framework.network.mime.transfer.TransferEncodingFactory;
@@ -27,86 +26,79 @@ public class TestTransferProtocol implements ServerProtocol {
 		return 8192;
 	}
 
+	@SuppressWarnings("resource")
 	@Override
-	public boolean dataReceivedFromClient(TCPServerClient client, ByteBuffer data, Runnable onbufferavailable) {
+	public void dataReceivedFromClient(TCPServerClient client, ByteBuffer data, Runnable onbufferavailable) {
 		LCCore.getApplication().getDefaultLogger().info("Test data received from client: " + data.remaining());
-		new Task.Cpu<Void, NoException>("Handle test client request", Task.PRIORITY_NORMAL) {
-			@SuppressWarnings("resource")
-			@Override
-			public Void run() {
-				MimeMessage mime = (MimeMessage)client.getAttribute("mime");
-				if (mime == null) {
-					mime = new MimeMessage();
-					client.setAttribute("mime", mime);
+		MimeMessage mime = (MimeMessage)client.getAttribute("mime");
+		if (mime == null) {
+			mime = new MimeMessage();
+			client.setAttribute("mime", mime);
+		}
+		ByteBuffersIO body = (ByteBuffersIO)client.getAttribute("body");
+		if (body != null) {
+			TransferReceiver transfer = (TransferReceiver)client.getAttribute("transfer");
+			receiveBody(client, mime, transfer, body, data, onbufferavailable);
+			return;
+		}
+		MimeUtil.HeadersLinesReceiver linesReceiver = (MimeUtil.HeadersLinesReceiver)client.getAttribute("mime_lines");
+		if (linesReceiver == null) {
+			linesReceiver = new MimeUtil.HeadersLinesReceiver(mime.getHeaders());
+			client.setAttribute("mime_lines", linesReceiver);
+		}
+		StringBuilder line = (StringBuilder)client.getAttribute("mime_line");
+		if (line == null) {
+			line = new StringBuilder(128);
+			client.setAttribute("mime_line", line);
+		}
+		while (data.hasRemaining()) {
+			byte b = data.get();
+			if (b == '\n') {
+				String s;
+				if (line.length() > 0 && line.charAt(line.length() - 1) == '\r')
+					s = line.substring(0, line.length() - 1);
+				else
+					s = line.toString();
+				try { linesReceiver.newLine(s); }
+				catch (Exception e) {
+					e.printStackTrace(System.err);
+					client.close();
+					return;
 				}
-				ByteBuffersIO body = (ByteBuffersIO)client.getAttribute("body");
-				if (body != null) {
-					TransferReceiver transfer = (TransferReceiver)client.getAttribute("transfer");
-					receiveBody(client, mime, transfer, body, data, onbufferavailable);
-					return null;
-				}
-				MimeUtil.HeadersLinesReceiver linesReceiver = (MimeUtil.HeadersLinesReceiver)client.getAttribute("mime_lines");
-				if (linesReceiver == null) {
-					linesReceiver = new MimeUtil.HeadersLinesReceiver(mime.getHeaders());
-					client.setAttribute("mime_lines", linesReceiver);
-				}
-				StringBuilder line = (StringBuilder)client.getAttribute("mime_line");
-				if (line == null) {
-					line = new StringBuilder(128);
-					client.setAttribute("mime_line", line);
-				}
-				while (data.hasRemaining()) {
-					byte b = data.get();
-					if (b == '\n') {
-						String s;
-						if (line.length() > 0 && line.charAt(line.length() - 1) == '\r')
-							s = line.substring(0, line.length() - 1);
-						else
-							s = line.toString();
-						try { linesReceiver.newLine(s); }
-						catch (Exception e) {
-							e.printStackTrace(System.err);
-							client.close();
-							return null;
-						}
-						if (s.length() == 0) {
-							body = new ByteBuffersIO(true, "body", Task.PRIORITY_NORMAL);
-							mime.setBodyReceived(body);
-							TransferReceiver transfer;
-							try { transfer = TransferEncodingFactory.create(mime, body); }
-							catch (Throwable t) {
-								t.printStackTrace(System.err);
-								client.close();
-								return null;
-							}
-							client.setAttribute("transfer", transfer);
-							client.setAttribute("body", body);
-							client.removeAttribute("mime_line");
-							client.removeAttribute("mime_lines");
-							if (transfer.isExpectingData())
-								receiveBody(client, mime, transfer, body, data, onbufferavailable);
-							else
-								answerToClient(client, mime, body);
-							return null;
-						}
-						line = new StringBuilder(128);
-						client.setAttribute("mime_line", line);
-						continue;
-					}
-					line.append((char)b);
-					if (line.length() > 1024) {
-						LCCore.getApplication().getDefaultLogger().error("Header line received too long");
+				if (s.length() == 0) {
+					body = new ByteBuffersIO(true, "body", Task.PRIORITY_NORMAL);
+					mime.setBodyReceived(body);
+					TransferReceiver transfer;
+					try { transfer = TransferEncodingFactory.create(mime, body); }
+					catch (Throwable t) {
+						t.printStackTrace(System.err);
 						client.close();
-						return null;
+						return;
 					}
+					client.setAttribute("transfer", transfer);
+					client.setAttribute("body", body);
+					client.removeAttribute("mime_line");
+					client.removeAttribute("mime_lines");
+					if (transfer.isExpectingData())
+						receiveBody(client, mime, transfer, body, data, onbufferavailable);
+					else
+						answerToClient(client, mime, body);
+					return;
 				}
-				onbufferavailable.run();
-				try { client.waitForData(15000); }
-				catch (ClosedChannelException e) {}
-				return null;
+				line = new StringBuilder(128);
+				client.setAttribute("mime_line", line);
+				continue;
 			}
-		}.start();
-		return false;
+			line.append((char)b);
+			if (line.length() > 1024) {
+				LCCore.getApplication().getDefaultLogger().error("Header line received too long");
+				client.close();
+				return;
+			}
+		}
+		onbufferavailable.run();
+		try { client.waitForData(15000); }
+		catch (ClosedChannelException e) {}
 	}
 	
 	private static void receiveBody(TCPServerClient client, MimeMessage mime, TransferReceiver transfer, ByteBuffersIO body, ByteBuffer data, Runnable onbufferavailable) {
