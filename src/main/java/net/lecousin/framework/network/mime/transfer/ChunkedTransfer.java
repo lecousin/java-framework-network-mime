@@ -80,9 +80,10 @@ public class ChunkedTransfer extends TransferReceiver {
 				}
 				if (needSize) {
 					int i = buf.get() & 0xFF;
+					/*
 					if (mime.getLogger().trace())
 						mime.getLogger().trace("Chunk size character: " + ((char)i)
-							+ " (" + i + "), so far size is: " + chunkSize);
+							+ " (" + i + "), so far size is: " + chunkSize);*/
 					if (chunkSizeChars == 8) {
 						// already get the 8 characters
 						if (i == '\n') {
@@ -131,7 +132,7 @@ public class ChunkedTransfer extends TransferReceiver {
 					if (i == 0x0D || i == 0x20) {
 						// end of chunk size
 						if (mime.getLogger().trace())
-							mime.getLogger().trace("end of chunk size, wait for end of line");
+							mime.getLogger().trace("end of chunk size: " + chunkSize + ", wait for end of line");
 						chunkSizeDone = true;
 						continue;
 					}
