@@ -8,6 +8,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
+import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.collections.LinkedArrayList;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.synch.AsyncWork;
@@ -17,6 +18,7 @@ import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.LinkedIO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
+import net.lecousin.framework.log.Logger;
 import net.lecousin.framework.network.TCPRemote;
 import net.lecousin.framework.network.client.TCPClient;
 import net.lecousin.framework.network.mime.header.HeaderValueFormat;
@@ -28,14 +30,9 @@ import net.lecousin.framework.util.IString;
 import net.lecousin.framework.util.UnprotectedString;
 import net.lecousin.framework.util.UnprotectedStringBuffer;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
 /** MIME Message (RFC 822). */
 public class MimeMessage {
 
-	public static final Log logger = LogFactory.getLog(MimeMessage.class);
-	
 	/** Constructor. */
 	public MimeMessage() {
 	}
@@ -49,6 +46,12 @@ public class MimeMessage {
 	public MimeMessage(MimeHeader... headers) {
 		for (MimeHeader h : headers)
 			this.headers.add(h);
+	}
+	
+	private Logger logger = LCCore.getApplication().getLoggerFactory().getLogger(MimeMessage.class);
+	
+	public Logger getLogger() {
+		return logger;
 	}
 	
 	// ***** Headers *****
@@ -271,13 +274,13 @@ public class MimeMessage {
 	/** Receive header lines from the given client. */
 	public SynchronizationPoint<IOException> readHeader(TCPClient client, int timeout) {
 		SynchronizationPoint<IOException> result = new SynchronizationPoint<>();
-		if (logger.isDebugEnabled())
+		if (logger.debug())
 			logger.debug("Receiving header lines...");
 		MimeUtil.HeadersLinesReceiver linesReceiver = new MimeUtil.HeadersLinesReceiver(headers);
 		AsyncWork<ByteArrayIO,IOException> readLine = client.getReceiver().readUntil((byte)'\n', 1024, timeout);
 		readLine.listenInline(new AsyncWorkListenerReady<ByteArrayIO, IOException>((line, that) -> {
 			String s = line.getAsString(StandardCharsets.US_ASCII);
-			if (logger.isDebugEnabled())
+			if (logger.debug())
 				logger.debug("Header line received: " + s);
 			int i = s.indexOf('\r');
 			if (i >= 0) s = s.substring(0,i);
@@ -289,7 +292,7 @@ public class MimeMessage {
 				return;
 			}
 			if (s.length() == 0) {
-				if (logger.isDebugEnabled())
+				if (logger.debug())
 					logger.debug("End of header lines");
 				result.unblock();
 				return;
@@ -307,7 +310,7 @@ public class MimeMessage {
 		IO.Readable body = getBodyToSend();
 		
 		if (body == null) {
-			if (logger.isDebugEnabled())
+			if (logger.debug())
 				logger.debug("Sending headers without body to " + remote);
 			setContentLength(0);
 			UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
@@ -324,7 +327,7 @@ public class MimeMessage {
 			SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
 			((IO.KnownSize)body).getSizeAsync().listenInline((size) -> {
 				new Task.Cpu.FromRunnable("Send MIME to " + remote, body.getPriority(), () -> {
-					if (logger.isDebugEnabled())
+					if (logger.debug())
 						logger.debug("Sending headers with body of " + size.longValue() + " to " + remote);
 					setContentLength(size.longValue());
 					UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
@@ -342,7 +345,7 @@ public class MimeMessage {
 			}, sp);
 			return sp;
 		}
-		if (logger.isDebugEnabled())
+		if (logger.debug())
 			logger.debug("Sending headers with chunked body to " + remote);
 		setHeaderRaw(TRANSFER_ENCODING, "chunked");
 		removeHeaders(CONTENT_LENGTH);

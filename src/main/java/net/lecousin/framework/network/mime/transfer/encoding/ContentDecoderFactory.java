@@ -1,11 +1,15 @@
 package net.lecousin.framework.network.mime.transfer.encoding;
 
 import java.lang.reflect.Constructor;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 
+import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.io.IO;
+import net.lecousin.framework.log.Logger;
 import net.lecousin.framework.network.mime.MimeMessage;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValues;
@@ -41,6 +45,11 @@ public final class ContentDecoderFactory {
 			decoders.put(encoding, ctor);
 		}
 	}
+	
+	/** Return the list of registered encoding. */
+	public static List<String> getSupportedEncoding() {
+		return new ArrayList<>(decoders.keySet());
+	}
 
 	/** Create a ContentDecoder for the given Content-Encoding. */
 	public static ContentDecoder createDecoder(ContentDecoder next, String encoding) {
@@ -54,17 +63,18 @@ public final class ContentDecoderFactory {
 			}
 		}
 		if (!hasDecoder) {
-			if (MimeMessage.logger.isErrorEnabled())
-				MimeMessage.logger.error("Content encoding '" + encoding
-					+ "' not supported, data may not be readable.");
+			Logger logger = LCCore.getApplication().getLoggerFactory().getLogger(ContentDecoderFactory.class);
+			if (logger.error())
+				logger.error("Content encoding '" + encoding + "' not supported, data may not be readable.");
 		}
 		if (ctor == null)
 			return next;
 		try {
 			return ctor.newInstance(next);
 		} catch (Exception e) {
-			if (MimeMessage.logger.isErrorEnabled())
-				MimeMessage.logger.error("Content decoder " + ctor.getName() + " cannot be instantiated for encoding '"
+			Logger logger = LCCore.getApplication().getLoggerFactory().getLogger(ContentDecoderFactory.class);
+			if (logger.error())
+				logger.error("Content decoder " + ctor.getName() + " cannot be instantiated for encoding '"
 					+ encoding + "', data may not be readable.");
 			return next;
 		}
