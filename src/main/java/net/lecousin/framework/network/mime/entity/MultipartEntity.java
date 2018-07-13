@@ -8,8 +8,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.synch.AsyncWork;
 import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
@@ -30,7 +28,6 @@ import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 public class MultipartEntity extends MimeEntity {
 
 	/** Constructor. */
-	@SuppressFBWarnings("EI_EXPOSE_REP2")
 	public MultipartEntity(byte[] boundary, String subType) {
 		this.boundary = boundary;
 		setHeader(CONTENT_TYPE,
@@ -114,7 +111,6 @@ public class MultipartEntity extends MimeEntity {
 		return (byte)('0' + (value - 26));
 	}
 	
-	@SuppressFBWarnings("EI_EXPOSE_REP")
 	public byte[] getBoundary() {
 		return boundary;
 	}

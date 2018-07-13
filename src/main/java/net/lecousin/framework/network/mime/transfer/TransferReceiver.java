@@ -3,8 +3,6 @@ package net.lecousin.framework.network.mime.transfer;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-
 import net.lecousin.framework.concurrent.synch.AsyncWork;
 import net.lecousin.framework.network.mime.MimeMessage;
 import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
@@ -12,7 +10,6 @@ import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
 /**
  * MIME Transfer, based on the Transfer-Encoding or Content-Transfer-Encoding header.
  */
-@SuppressFBWarnings("URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD")
 public abstract class TransferReceiver {
 
 	/** Constructor. */
