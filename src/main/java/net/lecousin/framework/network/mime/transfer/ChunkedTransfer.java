@@ -151,6 +151,10 @@ public class ChunkedTransfer extends TransferReceiver {
 					chunkSizeChars++;
 					continue;
 				}
+				if (chunkSize < 0) {
+					ondone.unblockError(new IOException("Missing chunk size"));
+					return null;
+				}
 				int l = buf.remaining();
 				if (l > chunkSize - chunkUsed) {
 					int nb = (int)(chunkSize - chunkUsed);

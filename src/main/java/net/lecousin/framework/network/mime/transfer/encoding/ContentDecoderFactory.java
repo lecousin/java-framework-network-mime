@@ -29,6 +29,7 @@ public final class ContentDecoderFactory {
 			registerDecoder("7bit", null);
 			registerDecoder("8bit", null);
 			registerDecoder("identity", null);
+			registerDecoder("binary", null);
 			registerDecoder("base64", Base64Decoder.class);
 			registerDecoder("quoted-printable", QuotedPrintableDecoder.class);
 			registerDecoder("gzip", GZipDecoder.class);
