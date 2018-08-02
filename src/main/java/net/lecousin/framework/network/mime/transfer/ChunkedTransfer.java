@@ -138,10 +138,9 @@ public class ChunkedTransfer extends TransferReceiver {
 					}
 					int isize = StringUtil.decodeHexa((char)i);
 					if (isize == -1) {
-						if (mime.getLogger().error())
-							mime.getLogger().error("Invalid chunk size: character '" + (char)i 
-								+ "' is not a valid hexadecimal character.");
-						ondone.unblockError(new IOException("Invalid chunk size"));
+						IOException error = new IOException("Invalid chunk size: character '" + ((char)i) + "' is not a valid hexadecimal character");
+						mime.getLogger().error("Invalid chunked data", error);
+						ondone.unblockError(error);
 						return null;
 					}
 					if (chunkSize < 0)
@@ -182,8 +181,10 @@ public class ChunkedTransfer extends TransferReceiver {
 										"Chunk consumed successfully, start a new consumer for the "
 										+ buf.remaining() + " remaining bytes");
 								new ChunkConsumer(buf, ondone).start();
-							} else
+							} else if (decode.hasError())
 								ondone.unblockError(IO.error(decode.getError()));
+							else
+								ondone.unblockCancel(decode.getCancelEvent());
 						}
 					});
 				} else {
@@ -206,8 +207,10 @@ public class ChunkedTransfer extends TransferReceiver {
 						public void run() {
 							if (decode.isSuccessful())
 								ondone.unblockSuccess(Boolean.FALSE);
-							else
+							else if (decode.hasError())
 								ondone.unblockError(IO.error(decode.getError()));
+							else
+								ondone.unblockCancel(decode.getCancelEvent());
 						}
 					});
 				}
