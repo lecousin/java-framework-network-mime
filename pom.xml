@@ -8,7 +8,7 @@
 
   <groupId>net.lecousin.framework.network</groupId>
   <artifactId>mime</artifactId>
-  <version>0.3.3</version>
+  <version>0.3.4</version>
   
   <name>lecousin.net Java framework - MIME</name>
   <description>MIME messages functionalities</description>
@@ -55,7 +55,7 @@
   	<dependency>
   		<groupId>net.lecousin</groupId>
   		<artifactId>core</artifactId>
-		<version>0.13.1</version>
+		<version>0.13.2</version>
   	</dependency>
   	<dependency>
   		<groupId>net.lecousin.compression</groupId>
@@ -70,7 +70,7 @@
   	<dependency>
   		<groupId>net.lecousin</groupId>
   		<artifactId>core</artifactId>
-		<version>0.13.1</version>
+		<version>0.13.2</version>
   		<type>test-jar</type>
   		<scope>test</scope>
   	</dependency>

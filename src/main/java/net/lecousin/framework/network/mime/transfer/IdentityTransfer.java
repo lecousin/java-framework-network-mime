@@ -67,8 +67,10 @@ public class IdentityTransfer extends TransferReceiver {
 								() -> { result.unblockSuccess(Boolean.TRUE); },
 								result
 							);
-					} else
+					} else if (decode.hasError())
 						result.unblockError(IO.error(decode.getError()));
+					else
+						result.cancel(decode.getCancelEvent());
 				}
 			});
 		} else {
@@ -86,8 +88,10 @@ public class IdentityTransfer extends TransferReceiver {
 								() -> { result.unblockSuccess(Boolean.TRUE); },
 								result
 							);
-					else
+					else if (decode.hasError())
 						result.unblockError(IO.error(decode.getError()));
+					else
+						result.cancel(decode.getCancelEvent());
 				}
 			});
 		}
