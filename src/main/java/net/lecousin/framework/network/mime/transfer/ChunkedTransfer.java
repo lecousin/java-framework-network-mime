@@ -32,6 +32,8 @@ import net.lecousin.framework.util.StringUtil;
  */
 public class ChunkedTransfer extends TransferReceiver {
 
+	// TODO support for trailer headers (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Trailer)
+
 	private static final byte[] FINAL_CHUNK = new byte[] { '0', '\r', '\n', '\r', '\n' };
 	
 	/** Constructor. */
