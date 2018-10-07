@@ -140,7 +140,8 @@ public class ChunkedTransfer extends TransferReceiver {
 					}
 					int isize = StringUtil.decodeHexa((char)i);
 					if (isize == -1) {
-						IOException error = new IOException("Invalid chunk size: character '" + ((char)i) + "' is not a valid hexadecimal character");
+						IOException error = new IOException("Invalid chunk size: character '" + ((char)i)
+							+ "' is not a valid hexadecimal character");
 						mime.getLogger().error("Invalid chunked data", error);
 						ondone.unblockError(error);
 						return null;

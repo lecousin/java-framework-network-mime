@@ -32,6 +32,8 @@ import net.lecousin.framework.util.UnprotectedStringBuffer;
 
 /** MIME Message (RFC 822). */
 public class MimeMessage {
+	
+	public static final char[] CRLF = new char[] { '\r', '\n' };
 
 	/** Constructor. */
 	public MimeMessage() {
@@ -254,7 +256,7 @@ public class MimeMessage {
 	public IO.Readable getReadableStream() {
 		UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
 		appendHeadersTo(s);
-		s.append("\r\n");
+		s.append(CRLF);
 		ByteArrayIO headers = new ByteArrayIO(s.toUsAsciiBytes(), "Mime Headers");
 		IO.Readable body = getBodyToSend();
 		if (body == null)
@@ -315,7 +317,7 @@ public class MimeMessage {
 			setContentLength(0);
 			UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
 			appendHeadersTo(s);
-			s.append("\r\n");
+			s.append(CRLF);
 			byte[] headers = s.toUsAsciiBytes();
 			return remote.send(ByteBuffer.wrap(headers));
 		}
@@ -332,7 +334,7 @@ public class MimeMessage {
 					setContentLength(size.longValue());
 					UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
 					appendHeadersTo(s);
-					s.append("\r\n");
+					s.append(CRLF);
 					byte[] headers = s.toUsAsciiBytes();
 					ISynchronizationPoint<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headers));
 					sendHeaders.listenInline(() -> {
@@ -351,7 +353,7 @@ public class MimeMessage {
 		removeHeaders(CONTENT_LENGTH);
 		UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
 		appendHeadersTo(s);
-		s.append("\r\n");
+		s.append(CRLF);
 		byte[] headers = s.toUsAsciiBytes();
 		ISynchronizationPoint<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headers));
 		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();

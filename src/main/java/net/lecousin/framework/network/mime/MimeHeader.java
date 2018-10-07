@@ -94,7 +94,7 @@ public class MimeHeader {
 			parsed.values().iterator().next().generate(s, 80 - name.length() - 2, 79);
 		} else
 			s.append(rawValue);
-		s.append("\r\n");
+		s.append(MimeMessage.CRLF);
 	}
 	
 }
