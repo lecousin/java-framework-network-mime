@@ -57,7 +57,7 @@ public class TestTransfer extends AbstractNetworkTest {
 		try {
 			TCPServer server = new TCPServer();
 			server.setProtocol(new TestTransferProtocol());
-			server.bind(new InetSocketAddress("localhost", 9999), 0);
+			server.bind(new InetSocketAddress("localhost", 9999), 0).blockThrow(0);
 			MimeMessage mime = new MimeMessage();
 			mime.setHeaderRaw("X-Test", "Hello World");
 			mime.setBodyToSend(new ByteArrayIO(data, "test"));
@@ -111,7 +111,7 @@ public class TestTransfer extends AbstractNetworkTest {
 			
 			TCPServer server = new TCPServer();
 			server.setProtocol(new TestTransferProtocol());
-			server.bind(new InetSocketAddress("localhost", 9999), 0);
+			server.bind(new InetSocketAddress("localhost", 9999), 0).blockThrow(0);
 			MimeMessage mime = new MimeMessage();
 			mime.setHeaderRaw("X-Test", "Hello World");
 			mime.setBodyToSend(in);
@@ -161,7 +161,7 @@ public class TestTransfer extends AbstractNetworkTest {
 		try {
 			TCPServer server = new TCPServer();
 			server.setProtocol(new TestTransferProtocol());
-			server.bind(new InetSocketAddress("localhost", 9999), 0);
+			server.bind(new InetSocketAddress("localhost", 9999), 0).blockThrow(0);
 			MimeMessage mime = new MimeMessage();
 			mime.setHeaderRaw("X-Test", "Hello World");
 			mime.setHeaderRaw(MimeMessage.TRANSFER_ENCODING, "chunked");
@@ -217,7 +217,7 @@ public class TestTransfer extends AbstractNetworkTest {
 			
 			TCPServer server = new TCPServer();
 			server.setProtocol(new TestTransferProtocol());
-			server.bind(new InetSocketAddress("localhost", 9999), 0);
+			server.bind(new InetSocketAddress("localhost", 9999), 0).blockThrow(0);
 			MimeMessage mime = new MimeMessage();
 			mime.setHeaderRaw("X-Test", "Hello World");
 			mime.setHeaderRaw(MimeMessage.TRANSFER_ENCODING, "chunked");
@@ -352,7 +352,7 @@ public class TestTransfer extends AbstractNetworkTest {
 		try {
 			TCPServer server = new TCPServer();
 			server.setProtocol(new TestTransferProtocol());
-			server.bind(new InetSocketAddress("localhost", 9999), 0);
+			server.bind(new InetSocketAddress("localhost", 9999), 0).blockThrow(0);
 			MimeMessage mime = new MimeMessage();
 			mime.setHeaderRaw(MimeMessage.CONTENT_ENCODING, encoding);
 			mime.setBodyToSend(encoded);
@@ -400,7 +400,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	public void testSendEmptyBody() throws Exception {
 		TCPServer server = new TCPServer();
 		server.setProtocol(new TestTransferProtocol());
-		server.bind(new InetSocketAddress("localhost", 9999), 0);
+		server.bind(new InetSocketAddress("localhost", 9999), 0).blockThrow(0);
 		MimeMessage mime = new MimeMessage();
 		mime.setHeaderRaw("X-Test", "Hello World");
 		TCPClient client = new TCPClient();
