@@ -51,7 +51,7 @@ public final class MimeUtil {
 	}
 
 	/** Decode a word based on RFC 2047 specification. */
-	public static String decodeRFC2047Word(String encodedWord) throws UnsupportedEncodingException, IOException {
+	public static String decodeRFC2047Word(String encodedWord) throws IOException {
 		int i = encodedWord.indexOf('?');
 		if (i < 0) return encodedWord;
 		String charsetName = encodedWord.substring(0, i);
@@ -94,7 +94,7 @@ public final class MimeUtil {
 		}
 		StringBuilder s = new StringBuilder(value.length() + 64);
 		s.append("=?UTF-8?B?");
-		s.append(new String(Base64.encodeBase64(bytes)));
+		s.append(new String(Base64.encodeBase64(bytes), StandardCharsets.US_ASCII));
 		s.append("?=");
 		return s.toString();
 	}
@@ -107,7 +107,6 @@ public final class MimeUtil {
 	}
 	
 	/** Create a MimeMessage with a Content-Type header and the body from the given string. */
-	@SuppressWarnings("resource")
 	public static MimeMessage mimeFromString(String content, Charset charset, String contentType) {
 		MimeMessage mime = new MimeMessage();
 		mime.setHeaderRaw(MimeMessage.CONTENT_TYPE, contentType + ";charset=" + charset.name());
@@ -132,7 +131,7 @@ public final class MimeUtil {
 		}
 		
 		/** Parse a new line. */
-		public void newLine(CharSequence line) throws Exception {
+		public void newLine(CharSequence line) throws MimeException {
 			if (line.length() == 0) {
 				if (currentName != null) {
 					headers.add(new MimeHeader(currentName, currentValue.toString()));
@@ -144,12 +143,12 @@ public final class MimeUtil {
 			char c = line.charAt(0);
 			if (c == ' ' || c == '\t') {
 				if (currentName == null)
-					throw new Exception("Invalid Mime header first line: cannot start with a space");
+					throw new MimeException("Invalid Mime header first line: cannot start with a space");
 				currentValue.append(line.subSequence(1, line.length()));
 				return;
 			}
 			if (c == ':')
-				throw new Exception("Invalid Mime header: no header name");
+				throw new MimeException("Invalid Mime header: no header name");
 			int i = 1;
 			int l = line.length();
 			while (i < l) {
@@ -158,7 +157,7 @@ public final class MimeUtil {
 				i++;
 			}
 			if (i == l)
-				throw new Exception("Invalid Mime header line: <" + line + ">");
+				throw new MimeException("Invalid Mime header line: <" + line + ">");
 			if (currentName != null)
 				headers.add(new MimeHeader(currentName, currentValue.toString()));
 			currentName = line.subSequence(0, i).toString().trim();
@@ -196,27 +195,17 @@ public final class MimeUtil {
 		private ContentDecoder bodyDecoder = null;
 		
 		public void nextBuffer() {
-			io.readNextBufferAsync().onDone(
-				(buffer) -> { parse(buffer); },
-				sp
-			);
+			io.readNextBufferAsync().onDone(this::parse, sp);
 		}
 		
 		private void parse(ByteBuffer buffer) {
 			if (header == null) {
 				if (buffer == null) {
-					bodyDecoder.endOfData().onDone(() -> {
-						((IOInMemoryOrFile)mime.getBodyReceivedAsInput())
-						.seekAsync(SeekType.FROM_BEGINNING, 0)
-						.onDone(() -> {
-							sp.unblockSuccess(mime);
-						}, sp);
-					}, sp);
+					bodyDecoder.endOfData().onDone(() -> ((IOInMemoryOrFile)mime.getBodyReceivedAsInput())
+						.seekAsync(SeekType.FROM_BEGINNING, 0).onDone(() -> sp.unblockSuccess(mime), sp), sp);
 					return;
 				}
-				bodyDecoder.decode(buffer).onDone(() -> {
-					nextBuffer();
-				}, sp);
+				bodyDecoder.decode(buffer).onDone(this::nextBuffer, sp);
 				return;
 			}
 			if (buffer == null) {
@@ -257,7 +246,6 @@ public final class MimeUtil {
 		}
 		
 		private void setBody(ByteBuffer buffer) {
-			@SuppressWarnings("resource")
 			IOInMemoryOrFile body = new IOInMemoryOrFile(65536, io.getPriority(), "MIME body from " + io.getSourceDescription());
 			bodyDecoder = ContentDecoderFactory.createDecoder(body, mime);
 			mime.setBodyReceived(body);

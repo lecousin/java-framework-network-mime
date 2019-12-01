@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** Default MIME type by file extension. */
+@SuppressWarnings("squid:S2386") // we keep the maps public
 public final class MimeType {
 	
 	private MimeType() { /* no instance */ }

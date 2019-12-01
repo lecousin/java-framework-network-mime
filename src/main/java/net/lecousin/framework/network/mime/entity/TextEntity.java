@@ -8,6 +8,7 @@ import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
+import net.lecousin.framework.network.mime.MimeException;
 import net.lecousin.framework.network.mime.MimeMessage;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.util.UnprotectedStringBuffer;
@@ -16,28 +17,29 @@ import net.lecousin.framework.util.UnprotectedStringBuffer;
  * Text entity.
  */
 public class TextEntity extends MimeEntity {
+	
+	public static final String CHARSET_PARAMETER = "charset";
 
 	/** Constructor. */
 	public TextEntity(String text, Charset charset, String textMimeType) {
 		this.text = text;
 		this.charset = charset;
-		setHeaderRaw(CONTENT_TYPE, textMimeType + ";charset=" + charset.name());
+		setHeaderRaw(CONTENT_TYPE, textMimeType + ";" + CHARSET_PARAMETER + "=" + charset.name());
 	}
 	
-	protected TextEntity(MimeMessage from) throws Exception {
+	protected TextEntity(MimeMessage from) throws MimeException {
 		super(from);
 		this.text = "";
 		ParameterizedHeaderValue type = getFirstHeaderValue(CONTENT_TYPE, ParameterizedHeaderValue.class);
-		if (type == null || type.getParameter("charset") == null)
+		if (type == null || type.getParameter(CHARSET_PARAMETER) == null)
 			charset = StandardCharsets.UTF_8;
 		else
-			charset = Charset.forName(type.getParameter("charset"));
+			charset = Charset.forName(type.getParameter(CHARSET_PARAMETER));
 	}
 	
 	/** Parse the body of the given MimeMessage into a TextEntity.
 	 * @param fromReceived if true, the received body is parsed, else the body to send is parsed from the mime message.
 	 */
-	@SuppressWarnings("resource")
 	public static AsyncSupplier<TextEntity, IOException> from(MimeMessage mime, boolean fromReceived) {
 		TextEntity entity;
 		try { entity = new TextEntity(mime); }
@@ -47,11 +49,11 @@ public class TextEntity extends MimeEntity {
 			return new AsyncSupplier<>(entity, null);
 		AsyncSupplier<UnprotectedStringBuffer, IOException> task = IOUtil.readFullyAsString(body, entity.charset, body.getPriority());
 		AsyncSupplier<TextEntity, IOException> result = new AsyncSupplier<>();
-		task.onDone((str) -> {
+		task.onDone(str -> {
 			entity.text = str.asString();
 			result.unblockSuccess(entity);
 		}, result);
-		result.onDone(() -> { body.closeAsync(); });
+		result.onDone(body::closeAsync);
 		return result;
 	}
 	
@@ -71,15 +73,15 @@ public class TextEntity extends MimeEntity {
 	}
 	
 	/** Set the charset to encode the text. */
-	public void setCharset(Charset charset) throws Exception {
+	public void setCharset(Charset charset) throws MimeException {
 		if (charset.equals(this.charset)) return;
 		this.charset = charset;
 		ParameterizedHeaderValue type = getFirstHeaderValue(CONTENT_TYPE, ParameterizedHeaderValue.class);
 		if (type == null) {
-			type = new ParameterizedHeaderValue("text/plain", "charset", charset.name());
+			type = new ParameterizedHeaderValue("text/plain", CHARSET_PARAMETER, charset.name());
 			addHeader(CONTENT_TYPE, type);
 		} else {
-			type.setParameterIgnoreCase("charset", charset.name());
+			type.setParameterIgnoreCase(CHARSET_PARAMETER, charset.name());
 			setHeader(CONTENT_TYPE, type);
 		}
 	}

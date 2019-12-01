@@ -21,11 +21,11 @@ public final class MimeHeaderValueParser {
 		LinkedList<Token> tokens = new LinkedList<>();
 		boolean escape = false;
 		StringBuilder currentWord = null;
+		Pair<List<Token>, Integer> p;
 		for (; i < l; ++i) {
 			char c = value.charAt(i);
 			if (c == end) {
-				if (currentWord != null)
-					tokens.add(new Word(currentWord.toString()));
+				appendWord(tokens, currentWord);
 				return new Pair<>(tokens, Integer.valueOf(i));
 			}
 			if (escape) {
@@ -35,89 +35,83 @@ public final class MimeHeaderValueParser {
 				escape = false;
 				continue;
 			}
-			if (c == '"') {
+			switch (c) {
+			case '"':
 				if (currentWord == null)
 					currentWord = new StringBuilder();
-				for (int j = i + 1; j < l; ++j) {
-					c = value.charAt(j);
-					if (escape) {
-						currentWord.append(c);
-						escape = false;
-						continue;
-					}
-					if (c == '\\') {
-						escape = true;
-						continue;
-					}
-					if (c == '"') {
-						i = j;
-						break;
-					}
-					currentWord.append(c);
-				}
+				i = eatString(currentWord, value, i, l);
+				break;
+			case '\\':
+				escape = true;
+				break;
+			case ' ':
+			case '\t':
+				currentWord = appendWord(tokens, currentWord);
+				if (!tokens.isEmpty() && tokens.getLast() instanceof Space)
+					continue;
+				tokens.add(new Space());
+				break;
+			case '(':
+				currentWord = appendWord(tokens, currentWord);
+				p = parse(value, i + 1, ')');
+				tokens.add(new Comment(p.getValue1()));
+				i = p.getValue2().intValue();
+				break;
+			case '[':
+				currentWord = appendWord(tokens, currentWord);
+				p = parse(value, i + 1, ']');
+				tokens.add(new DomainLiteral(p.getValue1()));
+				i = p.getValue2().intValue();
+				break;
+			case '<':
+				currentWord = appendWord(tokens, currentWord);
+				p = parse(value, i + 1, '>');
+				tokens.add(new Address(p.getValue1()));
+				i = p.getValue2().intValue();
+				break;
+			case '@':
+			case ',':
+			case ';':
+			case ':':
+			case '.':
+				currentWord = appendWord(tokens, currentWord);
+				tokens.add(new SpecialCharacter(c));
+				break;
+			default:
+				if (currentWord == null)
+					currentWord = new StringBuilder();
+				currentWord.append(c);
+			}
+		}
+		if (currentWord != null)
+			tokens.add(new Word(currentWord.toString()));
+		return new Pair<>(tokens, Integer.valueOf(i));
+	}
+	
+	private static StringBuilder appendWord(LinkedList<Token> tokens, StringBuilder currentWord) {
+		if (currentWord != null)
+			tokens.add(new Word(currentWord.toString()));
+		return null;
+	}
+	
+	private static int eatString(StringBuilder currentWord, String value, int i, int l) {
+		boolean escape = false;
+		for (int j = i + 1; j < l; ++j) {
+			char c = value.charAt(j);
+			if (escape) {
+				currentWord.append(c);
+				escape = false;
 				continue;
 			}
 			if (c == '\\') {
 				escape = true;
 				continue;
 			}
-			if (c == ' ' || c == '\t') {
-				if (currentWord != null) {
-					tokens.add(new Word(currentWord.toString()));
-					currentWord = null;
-				}
-				if (!tokens.isEmpty() && tokens.getLast() instanceof Space)
-					continue;
-				tokens.add(new Space());
-				continue;
-			}
-			if (c == '(') {
-				if (currentWord != null) {
-					tokens.add(new Word(currentWord.toString()));
-					currentWord = null;
-				}
-				Pair<List<Token>, Integer> p = parse(value, i + 1, ')');
-				tokens.add(new Comment(p.getValue1()));
-				i = p.getValue2().intValue();
-				continue;
-			}
-			if (c == '[') {
-				if (currentWord != null) {
-					tokens.add(new Word(currentWord.toString()));
-					currentWord = null;
-				}
-				Pair<List<Token>, Integer> p = parse(value, i + 1, ']');
-				tokens.add(new DomainLiteral(p.getValue1()));
-				i = p.getValue2().intValue();
-				continue;
-			}
-			if (c == '<') {
-				if (currentWord != null) {
-					tokens.add(new Word(currentWord.toString()));
-					currentWord = null;
-				}
-				Pair<List<Token>, Integer> p = parse(value, i + 1, '>');
-				tokens.add(new Address(p.getValue1()));
-				i = p.getValue2().intValue();
-				continue;
-			}
-			if (c == '@' || c == ',' || c == ';' || c == ':' || c == '.') {
-				if (currentWord != null) {
-					tokens.add(new Word(currentWord.toString()));
-					currentWord = null;
-				}
-				tokens.add(new SpecialCharacter(c));
-				continue;
-			}
-			if (currentWord == null)
-				currentWord = new StringBuilder();
+			if (c == '"')
+				return j;
 			currentWord.append(c);
 		}
-		if (currentWord != null) {
-			tokens.add(new Word(currentWord.toString()));
-			currentWord = null;
-		}
-		return new Pair<>(tokens, Integer.valueOf(i));
+		return l;
 	}
 	
 }

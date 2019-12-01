@@ -35,8 +35,9 @@ public class QuotedPrintableDecoder implements ContentDecoder {
 					System.arraycopy(previousRemainingData, 0, b, 0, previousRemainingData.length);
 					data.get(b, previousRemainingData.length, b.length - previousRemainingData.length);
 					input = ByteBuffer.wrap(b);
-				} else
+				} else {
 					input = data;
+				}
 				ByteBuffer decoded;
 				try { decoded = QuotedPrintable.decode(input); }
 				catch (IOException e) {
@@ -46,8 +47,9 @@ public class QuotedPrintableDecoder implements ContentDecoder {
 				if (input.hasRemaining()) {
 					previousRemainingData = new byte[input.remaining()];
 					input.get(previousRemainingData, 0, input.remaining());
-				} else
+				} else {
 					previousRemainingData = null;
+				}
 				IAsync<IOException> write = next.decode(decoded);
 				write.onDone(() -> {
 					if (write.hasError()) decode.error(write.getError());

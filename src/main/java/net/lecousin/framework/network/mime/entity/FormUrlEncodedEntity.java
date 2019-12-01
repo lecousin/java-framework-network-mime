@@ -13,7 +13,6 @@ import java.util.List;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.async.Async;
 import net.lecousin.framework.concurrent.async.AsyncSupplier;
-import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.text.BufferedReadableCharacterStream;
@@ -37,7 +36,6 @@ public class FormUrlEncodedEntity extends MimeEntity {
 	/** Parse the body of the given MimeMessage into a FormUrlEncodedEntity.
 	 * @param fromReceived if true, the received body is parsed, else the body to send is parsed from the mime message.
 	 */
-	@SuppressWarnings("resource")
 	public static AsyncSupplier<FormUrlEncodedEntity, IOException> from(MimeMessage mime, boolean fromReceived) {
 		FormUrlEncodedEntity entity;
 		try { entity = new FormUrlEncodedEntity(mime); }
@@ -59,8 +57,8 @@ public class FormUrlEncodedEntity extends MimeEntity {
 			charset = StandardCharsets.ISO_8859_1;
 		Async<IOException> parse = entity.parse(body, charset);
 		AsyncSupplier<FormUrlEncodedEntity, IOException> result = new AsyncSupplier<>();
-		parse.onDone(() -> { result.unblockSuccess(entity); }, result);
-		parse.onDone(() -> { body.closeAsync(); });
+		parse.onDone(() -> result.unblockSuccess(entity), result);
+		parse.onDone(body::closeAsync);
 		return result;
 	}
 	
@@ -97,61 +95,50 @@ public class FormUrlEncodedEntity extends MimeEntity {
 		@SuppressWarnings("resource")
 		BufferedReadableCharacterStream stream = new BufferedReadableCharacterStream(source, charset, 512, 8);
 		Async<IOException> result = new Async<>();
-		new Task.Cpu<Void, NoException>(
-			"Parsing www-form-urlencoded",
-			source.getPriority(),
-			(res) -> { stream.closeAsync(); }
-		) {
-			@Override
-			public Void run() {
-				StringBuilder name = new StringBuilder();
-				StringBuilder value = new StringBuilder();
-				boolean inValue = false;
-				do {
-					char c;
-					try { c = stream.read(); }
-					catch (EOFException eof) {
-						if (name.length() > 0 || value.length() > 0)
-							try {
-								parameters.add(new Pair<>(
-									URLDecoder.decode(name.toString(), "UTF-8"),
-									URLDecoder.decode(value.toString(), "UTF-8")
-								));
-							} catch (UnsupportedEncodingException e) {
-								// should never happen
-							}
-						break;
-					} catch (IOException error) {
-						result.error(error);
-						return null;
-					}
-					if (c == '&') {
-						if (name.length() > 0 || value.length() > 0)
-							try {
-								parameters.add(new Pair<>(
-									URLDecoder.decode(name.toString(), "UTF-8"),
-									URLDecoder.decode(value.toString(), "UTF-8")
-								));
-							} catch (UnsupportedEncodingException e) {
-								// should never happen
-							}
-						name = new StringBuilder();
-						value = new StringBuilder();
-						inValue = false;
-						continue;
-					}
-					if (!inValue && c == '=') {
-						inValue = true;
-						continue;
-					}
-					if (inValue) value.append(c);
-					else name.append(c);
-				} while (true);
-				result.unblock();
-				return null;
-			}
-		}.startOn(stream.canStartReading(), true);
+		new Task.Cpu.FromRunnable(() -> {
+			StringBuilder name = new StringBuilder();
+			StringBuilder value = new StringBuilder();
+			boolean inValue = false;
+			do {
+				char c;
+				try { c = stream.read(); }
+				catch (EOFException eof) {
+					if (name.length() > 0 || value.length() > 0)
+						addEncodedParameter(name, value);
+					break;
+				} catch (IOException error) {
+					result.error(error);
+					return;
+				}
+				if (c == '&') {
+					if (name.length() > 0 || value.length() > 0)
+						addEncodedParameter(name, value);
+					name = new StringBuilder();
+					value = new StringBuilder();
+					inValue = false;
+					continue;
+				}
+				if (!inValue && c == '=') {
+					inValue = true;
+					continue;
+				}
+				if (inValue) value.append(c);
+				else name.append(c);
+			} while (true);
+			result.unblock();
+		}, "Parsing www-form-urlencoded", source.getPriority(), res -> stream.closeAsync()).startOn(stream.canStartReading(), true);
 		return result;
+	}
+	
+	private void addEncodedParameter(StringBuilder name, StringBuilder value) {
+		try {
+			parameters.add(new Pair<>(
+				URLDecoder.decode(name.toString(), StandardCharsets.UTF_8.name()),
+				URLDecoder.decode(value.toString(), StandardCharsets.UTF_8.name())
+			));
+		} catch (UnsupportedEncodingException e) {
+			// should never happen
+		}
 	}
 	
 	@Override
@@ -160,9 +147,9 @@ public class FormUrlEncodedEntity extends MimeEntity {
 		for (Pair<String, String> param : parameters) {
 			if (s.length() > 0) s.append('&');
 			try {
-				s.append(URLEncoder.encode(param.getValue1(), "UTF-8"));
+				s.append(URLEncoder.encode(param.getValue1(), StandardCharsets.UTF_8.name()));
 				s.append('=');
-				s.append(URLEncoder.encode(param.getValue2(), "UTF-8"));
+				s.append(URLEncoder.encode(param.getValue2(), StandardCharsets.UTF_8.name()));
 			} catch (UnsupportedEncodingException e) {
 				// should never happen
 			}

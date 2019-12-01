@@ -7,10 +7,10 @@ import java.util.List;
 public interface Token {
 	
 	/** Convert this token into corresponding string. */
-	public String asText();
+	String asText();
 	
 	/** Convert the given tokens into corresponding string. */
-	public static String asText(List<Token> tokens) {
+	static String asText(List<Token> tokens) {
 		StringBuilder s = new StringBuilder();
 		for (Token token : tokens)
 			s.append(token.asText());
@@ -18,7 +18,7 @@ public interface Token {
 	}
 
 	/** Remove any leading or trailing space tokens. */
-	public static void trim(List<Token> tokens) {
+	static void trim(List<Token> tokens) {
 		while (!tokens.isEmpty() && (tokens.get(0) instanceof Space))
 			tokens.remove(0);
 		while (!tokens.isEmpty() && (tokens.get(tokens.size() - 1) instanceof Space))
@@ -26,7 +26,8 @@ public interface Token {
 	}
 	
 	/** Remove comment tokens. */
-	public static void removeComments(List<Token> tokens) {
+	@SuppressWarnings("squid:ForLoopCounterChangedCheck")
+	static void removeComments(List<Token> tokens) {
 		for (int i = 0; i < tokens.size(); )
 			if (tokens.get(i) instanceof Comment)
 				tokens.remove(i);
@@ -35,7 +36,7 @@ public interface Token {
 	}
 	
 	/** Split into lists of tokens, using the given special character. */
-	public static List<List<Token>> splitBySpecialCharacter(List<Token> tokens, char sc) {
+	static List<List<Token>> splitBySpecialCharacter(List<Token> tokens, char sc) {
 		List<List<Token>> list = new LinkedList<>();
 		List<Token> current = new LinkedList<>();
 		for (Token token : tokens) {
@@ -43,8 +44,9 @@ public interface Token {
 				if (!current.isEmpty())
 					list.add(current);
 				current = new LinkedList<>();
-			} else
+			} else {
 				current.add(token);
+			}
 		}
 		if (!current.isEmpty())
 			list.add(current);

@@ -36,14 +36,16 @@ import net.lecousin.framework.util.UnprotectedStringBuffer;
 /** form-data entity, see RFC 2388. */
 public class FormDataEntity extends MultipartEntity implements Closeable, AsyncCloseable<IOException> {
 
+	public static final String MULTIPART_SUB_TYPE = "form-data";
+	
 	/** Constructor. */
 	public FormDataEntity() {
-		super("form-data");
+		super(MULTIPART_SUB_TYPE);
 	}
 	
 	/** Constructor. */
 	public FormDataEntity(byte[] boundary) {
-		super(boundary, "form-data");
+		super(boundary, MULTIPART_SUB_TYPE);
 	}
 	
 	/** Part for a field. */
@@ -53,7 +55,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 			this.name = name;
 			this.value = value;
 			this.charset = charset;
-			addHeader(CONTENT_DISPOSITION, new ParameterizedHeaderValue("form-data", "name", name));
+			addHeader(CONTENT_DISPOSITION, new ParameterizedHeaderValue(MULTIPART_SUB_TYPE, "name", name));
 			addHeaderRaw(CONTENT_TRANSFER_ENCODING, "quoted-printable");
 			addHeader(CONTENT_TYPE, new ParameterizedHeaderValue("text/plain", "charset", charset.name()));
 		}
@@ -81,7 +83,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 			this.filename = filename;
 			setBodyToSend(content);
 			addHeader(CONTENT_TYPE, contentType);
-			ParameterizedHeaderValue dispo = new ParameterizedHeaderValue("form-data", "name", fieldName);
+			ParameterizedHeaderValue dispo = new ParameterizedHeaderValue(MULTIPART_SUB_TYPE, "name", fieldName);
 			if (filename != null)
 				dispo.addParameter("filename", filename);
 			addHeader(CONTENT_DISPOSITION, dispo);
@@ -165,6 +167,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 	}
 	
 	@Override
+	@SuppressWarnings("squid:S2095") // IOs are closed, but asynchronously
 	protected AsyncSupplier<MimeMessage, IOException> createPart(List<MimeHeader> headers, IOInMemoryOrFile body, boolean asReceived) {
 		try {
 			ParameterizedHeaderValue dispo = null;
@@ -175,7 +178,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 				}
 			if (dispo == null)
 				throw new IOException("Missing header Content-Disposition for a form-data entity");
-			if (!"form-data".equals(dispo.getMainValue()))
+			if (!MULTIPART_SUB_TYPE.equals(dispo.getMainValue()))
 				throw new IOException("Invalid Content-Disposition: " + dispo.getMainValue() + ", expected is form-data");
 			String fieldName = dispo.getParameter("name");
 			if (fieldName == null)
@@ -215,16 +218,12 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 			FileIO.ReadWrite io = new FileIO.ReadWrite(tmp, Task.PRIORITY_NORMAL);
 			ContentDecoder decoder = ContentDecoderFactory.createDecoder(io, new MimeMessage(headers));
 			if (decoder instanceof IdentityDecoder) {
-				io.closeAsync().onDone(() -> {
-					new RemoveFileTask(tmp, Task.PRIORITY_LOW).start();
-				});
+				io.closeAsync().onDone(() -> new RemoveFileTask(tmp, Task.PRIORITY_LOW).start());
 				return new AsyncSupplier<>(new PartFile(fieldName, filename, type, body), null);
 			}
 			AsyncSupplier<MimeMessage, IOException> result = new AsyncSupplier<>();
 			decodeFile(fieldName, filename, type, body, decoder, io, result);
-			io.addCloseListener(() -> {
-				new RemoveFileTask(tmp, Task.PRIORITY_LOW).start();
-			});
+			io.addCloseListener(() -> new RemoveFileTask(tmp, Task.PRIORITY_LOW).start());
 			return result;
 		} catch (Exception e) {
 			return new AsyncSupplier<>(null, IO.error(e));
@@ -242,6 +241,8 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 		});
 	}
 	
+	private static final String DECODE_ERROR_MESSAGE = "Error decoding value of form-data field ";
+	
 	private static void decodeField(
 		String fieldName, ContentDecoder decoder, IOInMemoryOrFile encoded, ByteBuffersIO decoded,
 		Charset charset, AsyncSupplier<MimeMessage, IOException> result
@@ -250,20 +251,20 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 		AsyncSupplier<Integer, IOException> read = encoded.readFullyAsync(buf);
 		read.onDone(() -> {
 			if (read.hasError()) {
-				result.error(new IOException("Error reading value of form-data field " + fieldName, read.getError()));
+				result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, read.getError()));
 				return;
 			}
 			buf.flip();
 			IAsync<IOException> decode = decoder.decode(buf);
 			decode.onDone(() -> {
 				if (decode.hasError()) {
-					result.error(new IOException("Error decoding value of form-data field " + fieldName, decode.getError()));
+					result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, decode.getError()));
 					return;
 				}
 				IAsync<IOException> end = decoder.endOfData();
 				end.onDone(() -> {
 					if (end.hasError()) {
-						result.error(new IOException("Error decoding value of form-data field " + fieldName, end.getError()));
+						result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, end.getError()));
 						return;
 					}
 					decoded.seekSync(SeekType.FROM_BEGINNING, 0);
@@ -281,7 +282,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 		AsyncSupplier<Integer, IOException> read = encoded.readFullyAsync(buf);
 		read.thenStart(new Task.Cpu.FromRunnable("Reading form-data file", Task.PRIORITY_NORMAL, () -> {
 			if (read.hasError()) {
-				result.error(new IOException("Error reading value of form-data field " + fieldName, read.getError()));
+				result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, read.getError()));
 				file.closeAsync();
 				return;
 			}
@@ -289,7 +290,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 			IAsync<IOException> decode = decoder.decode(buf);
 			decode.onDone(() -> {
 				if (decode.hasError()) {
-					result.error(new IOException("Error decoding value of form-data field " + fieldName, decode.getError()));
+					result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, decode.getError()));
 					file.closeAsync();
 					return;
 				}
@@ -297,8 +298,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 					IAsync<IOException> end = decoder.endOfData();
 					end.onDone(() -> {
 						if (end.hasError()) {
-							result.error(new IOException("Error decoding value of form-data field "
-								+ fieldName, end.getError()));
+							result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, end.getError()));
 							file.closeAsync();
 							return;
 						}

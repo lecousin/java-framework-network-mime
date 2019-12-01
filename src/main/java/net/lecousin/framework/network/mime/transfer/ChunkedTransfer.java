@@ -34,6 +34,8 @@ public class ChunkedTransfer extends TransferReceiver {
 
 	// TODO support for trailer headers (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Trailer)
 
+	public static final String TRANSFER_NAME = "chunked";
+	
 	private static final byte[] FINAL_CHUNK = new byte[] { '0', '\r', '\n', '\r', '\n' };
 	
 	/** Constructor. */
@@ -65,11 +67,11 @@ public class ChunkedTransfer extends TransferReceiver {
 		private ChunkConsumer(ByteBuffer buf, AsyncSupplier<Boolean, IOException> ondone) {
 			super("Reading chunk of data", Task.PRIORITY_NORMAL);
 			this.buf = buf;
-			this.ondone = ondone;
+			this.onDone = ondone;
 		}
 		
 		private ByteBuffer buf;
-		private AsyncSupplier<Boolean, IOException> ondone;
+		private AsyncSupplier<Boolean, IOException> onDone;
 		
 		@Override
 		public Void run() {
@@ -77,149 +79,147 @@ public class ChunkedTransfer extends TransferReceiver {
 				if (!buf.hasRemaining()) {
 					if (mime.getLogger().trace())
 						mime.getLogger().trace("End of chunck data consumed, wait for more data");
-					ondone.unblockSuccess(Boolean.FALSE);
+					onDone.unblockSuccess(Boolean.FALSE);
 					return null;
 				}
 				if (needSize) {
-					int i = buf.get() & 0xFF;
-					/*
-					if (mime.getLogger().trace())
-						mime.getLogger().trace("Chunk size character: " + ((char)i)
-							+ " (" + i + "), so far size is: " + chunkSize);*/
-					if (chunkSizeChars == 8) {
-						// already get the 8 characters
-						if (i == '\n') {
-							// end of line for chunk size
-							needSize = false;
-							chunkSizeDone = false;
-							chunkExtension = false;
-							if (chunkSize == 0) {
-								// final chunk of 0
-								decoder.endOfData().onDone(
-									() -> { ondone.unblockSuccess(Boolean.TRUE); },
-									ondone
-								);
-								return null;
-							}
-							continue;
-						}
-					}
-					if (chunkSize < 0 && (i == '\r' || i == '\n')) continue;
-					if (i == ';') {
-						if (mime.getLogger().trace())
-							mime.getLogger().trace("Start chunk extension");
-						chunkSizeDone = true;
-						chunkExtension = true;
-						continue;
-					}
-					if (i == '\n') {
-						// end of chunk line
-						if (mime.getLogger().trace())
-							mime.getLogger().trace("End of chunk line, chunk size is " + chunkSize);
-						needSize = false;
-						chunkSizeDone = false;
-						chunkExtension = false;
-						if (chunkSize == 0) {
-							// final chunk of 0
-							decoder.endOfData().onDone(
-									() -> { ondone.unblockSuccess(Boolean.TRUE); },
-									ondone
-								);
-							return null;
-						}
-						continue;
-					}
-					if (chunkExtension) continue;
-					if (chunkSizeDone) continue;
-					if (i == 0x0D || i == 0x20) {
-						// end of chunk size
-						if (mime.getLogger().trace())
-							mime.getLogger().trace("end of chunk size: " + chunkSize + ", wait for end of line");
-						chunkSizeDone = true;
-						continue;
-					}
-					int isize = StringUtil.decodeHexa((char)i);
-					if (isize == -1) {
-						IOException error = new IOException("Invalid chunk size: character '" + ((char)i)
-							+ "' is not a valid hexadecimal character");
-						mime.getLogger().error("Invalid chunked data", error);
-						ondone.unblockError(error);
+					if (!needSize())
 						return null;
-					}
-					if (chunkSize < 0)
-						chunkSize = isize;
-					else
-						chunkSize = (chunkSize << 4) + isize;
-					chunkSizeChars++;
 					continue;
 				}
 				if (chunkSize < 0) {
-					ondone.unblockError(new IOException("Missing chunk size"));
+					onDone.unblockError(new IOException("Missing chunk size"));
 					return null;
 				}
-				int l = buf.remaining();
-				if (l > chunkSize - chunkUsed) {
-					int nb = (int)(chunkSize - chunkUsed);
-					int limit = buf.limit();
-					buf.limit(buf.position() + nb);
-					int nextPos = buf.position() + nb;
-					chunkUsed += nb;
-					if (chunkUsed == chunkSize) {
-						needSize = true;
-						chunkSize = -1;
-						chunkSizeChars = 0;
-						chunkUsed = 0;
-					}
-					if (mime.getLogger().trace())
-						mime.getLogger().trace("Consume end of chunk: " + nb + " bytes, data still available after");
-					IAsync<IOException> decode = decoder.decode(buf);
-					decode.onDone(new Runnable() {
-						@Override
-						public void run() {
-							buf.limit(limit);
-							if (decode.isSuccessful()) {
-								buf.position(nextPos);
-								if (mime.getLogger().trace())
-									mime.getLogger().trace(
-										"Chunk consumed successfully, start a new consumer for the "
-										+ buf.remaining() + " remaining bytes");
-								new ChunkConsumer(buf, ondone).start();
-							} else if (decode.hasError())
-								ondone.unblockError(IO.error(decode.getError()));
-							else
-								ondone.unblockCancel(decode.getCancelEvent());
-						}
-					});
-				} else {
-					chunkUsed += l;
-					if (chunkUsed == chunkSize) {
-						if (mime.getLogger().trace())
-							mime.getLogger().trace("Consume end of chunk: " + l + " bytes, no more data available");
-						needSize = true;
-						chunkSize = -1;
-						chunkSizeChars = 0;
-						chunkUsed = 0;
-					} else {
-						if (mime.getLogger().trace())
-							mime.getLogger().trace("Consume part of chunk: " + l + " bytes, "
-								+ chunkUsed + "/" + chunkSize + " consumed so far, no more data available");
-					}
-					IAsync<IOException> decode = decoder.decode(buf);
-					decode.onDone(new Runnable() {
-						@Override
-						public void run() {
-							if (decode.isSuccessful())
-								ondone.unblockSuccess(Boolean.FALSE);
-							else if (decode.hasError())
-								ondone.unblockError(IO.error(decode.getError()));
-							else
-								ondone.unblockCancel(decode.getCancelEvent());
-						}
-					});
-				}
+				consumeChunk();
 				break;
 			}
 			return null;
+		}
+		
+		private boolean needSize() {
+			int i = buf.get() & 0xFF;
+			/*
+			if (mime.getLogger().trace())
+				mime.getLogger().trace("Chunk size character: " + ((char)i)
+					+ " (" + i + "), so far size is: " + chunkSize);*/
+			if (chunkSizeChars == 8 && i == '\n') {
+				// already get the 8 characters
+				// end of line for chunk size
+				needSize = false;
+				chunkSizeDone = false;
+				chunkExtension = false;
+				if (chunkSize == 0) {
+					// final chunk of 0
+					decoder.endOfData().onDone(() -> onDone.unblockSuccess(Boolean.TRUE), onDone);
+					return false;
+				}
+				return true;
+			}
+			if (chunkSize < 0 && (i == '\r' || i == '\n'))
+				return true;
+			if (i == ';') {
+				if (mime.getLogger().trace())
+					mime.getLogger().trace("Start chunk extension");
+				chunkSizeDone = true;
+				chunkExtension = true;
+				return true;
+			}
+			if (i == '\n') {
+				// end of chunk line
+				if (mime.getLogger().trace())
+					mime.getLogger().trace("End of chunk line, chunk size is " + chunkSize);
+				needSize = false;
+				chunkSizeDone = false;
+				chunkExtension = false;
+				if (chunkSize == 0) {
+					// final chunk of 0
+					decoder.endOfData().onDone(() -> onDone.unblockSuccess(Boolean.TRUE), onDone);
+					return false;
+				}
+				return true;
+			}
+			if (chunkExtension) return true;
+			if (chunkSizeDone) return true;
+			if (i == 0x0D || i == 0x20) {
+				// end of chunk size
+				if (mime.getLogger().trace())
+					mime.getLogger().trace("end of chunk size: " + chunkSize + ", wait for end of line");
+				chunkSizeDone = true;
+				return true;
+			}
+			int isize = StringUtil.decodeHexa((char)i);
+			if (isize == -1) {
+				IOException error = new IOException("Invalid chunk size: character '" + ((char)i)
+					+ "' is not a valid hexadecimal character");
+				mime.getLogger().error("Invalid chunked data", error);
+				onDone.unblockError(error);
+				return false;
+			}
+			if (chunkSize < 0)
+				chunkSize = isize;
+			else
+				chunkSize = (chunkSize << 4) + isize;
+			chunkSizeChars++;
+			return true;
+		}
+		
+		private void consumeChunk() {
+			int l = buf.remaining();
+			if (l > chunkSize - chunkUsed) {
+				int nb = (int)(chunkSize - chunkUsed);
+				int limit = buf.limit();
+				buf.limit(buf.position() + nb);
+				int nextPos = buf.position() + nb;
+				chunkUsed += nb;
+				if (chunkUsed == chunkSize) {
+					needSize = true;
+					chunkSize = -1;
+					chunkSizeChars = 0;
+					chunkUsed = 0;
+				}
+				if (mime.getLogger().trace())
+					mime.getLogger().trace("Consume end of chunk: " + nb + " bytes, data still available after");
+				IAsync<IOException> decode = decoder.decode(buf);
+				decode.onDone(() -> {
+					buf.limit(limit);
+					if (decode.isSuccessful()) {
+						buf.position(nextPos);
+						if (mime.getLogger().trace())
+							mime.getLogger().trace(
+								"Chunk consumed successfully, start a new consumer for the "
+								+ buf.remaining() + " remaining bytes");
+						new ChunkConsumer(buf, onDone).start();
+					} else if (decode.hasError()) {
+						onDone.unblockError(IO.error(decode.getError()));
+					} else {
+						onDone.unblockCancel(decode.getCancelEvent());
+					}
+				});
+			} else {
+				chunkUsed += l;
+				if (chunkUsed == chunkSize) {
+					if (mime.getLogger().trace())
+						mime.getLogger().trace("Consume end of chunk: " + l + " bytes, no more data available");
+					needSize = true;
+					chunkSize = -1;
+					chunkSizeChars = 0;
+					chunkUsed = 0;
+				} else {
+					if (mime.getLogger().trace())
+						mime.getLogger().trace("Consume part of chunk: " + l + " bytes, "
+							+ chunkUsed + "/" + chunkSize + " consumed so far, no more data available");
+				}
+				IAsync<IOException> decode = decoder.decode(buf);
+				decode.onDone(() -> {
+					if (decode.isSuccessful())
+						onDone.unblockSuccess(Boolean.FALSE);
+					else if (decode.hasError())
+						onDone.unblockError(IO.error(decode.getError()));
+					else
+						onDone.unblockCancel(decode.getCancelEvent());
+				});
+			}
 		}
 	}
 	
@@ -227,13 +227,13 @@ public class ChunkedTransfer extends TransferReceiver {
 	public static Async<IOException> send(TCPRemote client, IO.Readable data, int bufferSize, int maxBuffers) {
 		Async<IOException> result = new Async<>();
 		Logger logger = LCCore.getApplication().getLoggerFactory().getLogger(MimeMessage.class);
-		Production<ByteBuffer> production = new Production<ByteBuffer>(
+		Production<ByteBuffer> production = new Production<>(
 			new IOReaderAsProducer(data, bufferSize), maxBuffers,
 		new Consumer<ByteBuffer>() {
 			@Override
 			public AsyncSupplier<Void,IOException> consume(ByteBuffer product) {
 				if (!product.hasRemaining()) {
-					return new AsyncSupplier<Void,IOException>(null, null);
+					return new AsyncSupplier<>(null, null);
 				}
 				int size = product.remaining();
 				if (logger.trace())
@@ -330,7 +330,7 @@ public class ChunkedTransfer extends TransferReceiver {
 	) {
 		Logger logger = LCCore.getApplication().getLoggerFactory().getLogger(MimeMessage.class);
 		data.readNextBufferAsync().onDone(
-			(buffer) -> {
+			buffer -> {
 				if (buffer == null) {
 					// send final chunk
 					if (logger.trace())
@@ -358,9 +358,7 @@ public class ChunkedTransfer extends TransferReceiver {
 						IAsync<IOException> sendProduct = client.send(buffer);
 						IAsync<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK, 1, 2));
 						JoinPoint.fromSimilarError(sendHeader, sendProduct, sendEndOfChunk)
-							.onDone(() -> {
-									sendNextBuffer(client, data, result, chunkHeader);
-							}, result);
+							.onDone(() -> sendNextBuffer(client, data, result, chunkHeader), result);
 						return null;
 					}
 				}.start();

@@ -3,6 +3,7 @@ package net.lecousin.framework.network.mime;
 import java.util.HashMap;
 import java.util.Map;
 
+import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.network.mime.header.HeaderValueFormat;
 import net.lecousin.framework.util.IString;
 
@@ -48,17 +49,23 @@ public class MimeHeader {
 	}
 	
 	/** Return the value parsed into the requested format. */
-	public <T extends HeaderValueFormat> T getValue(Class<T> format) throws Exception {
+	public <T extends HeaderValueFormat> T getValue(Class<T> format) throws MimeException {
 		if (parsed != null) {
 			@SuppressWarnings("unchecked")
 			T t = (T)parsed.get(format);
 			if (t != null)
 				return t;
-		} else if (rawValue == null)
+		} else if (rawValue == null) {
 			return null;
-		else
+		} else {
 			parsed = new HashMap<>(5);
-		T t = format.newInstance();
+		}
+		T t;
+		try { t = format.newInstance(); }
+		catch (Exception e) {
+			LCCore.getApplication().getLoggerFactory().getLogger(MimeMessage.class).error("Unable to instantiate header format class", e);
+			return null;
+		}
 		t.parseRawValue(rawValue);
 		parsed.put(format, t);
 		return t;
@@ -82,8 +89,9 @@ public class MimeHeader {
 		s.append(name).append(": ");
 		if (rawValue == null && parsed != null) {
 			parsed.values().iterator().next().generate(s, 80 - name.length() - 2, 79);
-		} else
+		} else {
 			s.append(rawValue);
+		}
 		s.append("\r\n");
 	}
 	
@@ -92,8 +100,9 @@ public class MimeHeader {
 		s.append(name).append(": ");
 		if (rawValue == null && parsed != null) {
 			parsed.values().iterator().next().generate(s, 80 - name.length() - 2, 79);
-		} else
+		} else {
 			s.append(rawValue);
+		}
 		s.append(MimeMessage.CRLF);
 	}
 	

@@ -10,7 +10,6 @@ import java.util.List;
 
 import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.collections.LinkedArrayList;
-import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.async.Async;
 import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.concurrent.async.IAsync;
@@ -33,7 +32,8 @@ import net.lecousin.framework.util.UnprotectedStringBuffer;
 /** MIME Message (RFC 822). */
 public class MimeMessage {
 	
-	public static final char[] CRLF = new char[] { '\r', '\n' };
+	protected static final char[] CRLF = new char[] { '\r', '\n' };
+	private static final String IO_DESCRIPTION = "MIME Message";
 
 	/** Constructor. */
 	public MimeMessage() {
@@ -75,7 +75,7 @@ public class MimeMessage {
 	}
 	
 	/** Return the list of headers values with the given name (case insensitive), parsed into the requested format. */
-	public <T extends HeaderValueFormat> List<T> getHeadersValues(String name, Class<T> format) throws Exception {
+	public <T extends HeaderValueFormat> List<T> getHeadersValues(String name, Class<T> format) throws MimeException {
 		List<T> list = new LinkedList<>();
 		name = name.toLowerCase();
 		for (MimeHeader h : headers)
@@ -94,7 +94,7 @@ public class MimeMessage {
 	}
 	
 	/** Return the value of the first header with the given name (case insensitive) parsed into the requested format, or null. */
-	public <T extends HeaderValueFormat> T getFirstHeaderValue(String name, Class<T> format) throws Exception {
+	public <T extends HeaderValueFormat> T getFirstHeaderValue(String name, Class<T> format) throws MimeException {
 		MimeHeader h = getFirstHeader(name);
 		if (h == null)
 			return null;
@@ -199,7 +199,7 @@ public class MimeMessage {
 	}
 
 	/** Parse the Content-Type header and return it, or null if it is not present. */
-	public ParameterizedHeaderValue getContentType() throws Exception {
+	public ParameterizedHeaderValue getContentType() throws MimeException {
 		return getFirstHeaderValue(CONTENT_TYPE, ParameterizedHeaderValue.class);
 	}
 	
@@ -252,23 +252,22 @@ public class MimeMessage {
 	}
 	
 	/** Generate this MimeMessage into a Readable IO. */
-	@SuppressWarnings("resource")
 	public IO.Readable getReadableStream() {
 		UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
 		appendHeadersTo(s);
 		s.append(CRLF);
-		ByteArrayIO headers = new ByteArrayIO(s.toUsAsciiBytes(), "Mime Headers");
+		ByteArrayIO headersIO = new ByteArrayIO(s.toUsAsciiBytes(), "Mime Headers");
 		IO.Readable body = getBodyToSend();
 		if (body == null)
-			return headers;
+			return headersIO;
 		if (body instanceof IO.Readable.Buffered) {
 			if (body instanceof IO.KnownSize)
-				return new LinkedIO.Readable.Buffered.DeterminedSize("Mime Message", headers, (IO.Readable.Buffered)body);
-			return new LinkedIO.Readable.Buffered("Mime Message", headers, (IO.Readable.Buffered)body);
+				return new LinkedIO.Readable.Buffered.DeterminedSize(IO_DESCRIPTION, headersIO, (IO.Readable.Buffered)body);
+			return new LinkedIO.Readable.Buffered(IO_DESCRIPTION, headersIO, (IO.Readable.Buffered)body);
 		}
 		if (body instanceof IO.KnownSize)
-			return new LinkedIO.Readable.DeterminedSize("Mime Message", headers, body);
-		return new LinkedIO.Readable("Mime Message", headers, body);
+			return new LinkedIO.Readable.DeterminedSize(IO_DESCRIPTION, headersIO, body);
+		return new LinkedIO.Readable(IO_DESCRIPTION, headersIO, body);
 	}
 	
 	// --- Receive ---
@@ -307,7 +306,6 @@ public class MimeMessage {
 	// --- Send ---
 	
 	/** Send this MIME to the given TCP connection. */
-	@SuppressWarnings("resource")
 	public IAsync<IOException> send(TCPRemote remote) {
 		IO.Readable body = getBodyToSend();
 		
@@ -318,8 +316,8 @@ public class MimeMessage {
 			UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
 			appendHeadersTo(s);
 			s.append(CRLF);
-			byte[] headers = s.toUsAsciiBytes();
-			return remote.send(ByteBuffer.wrap(headers));
+			byte[] headersBuffer = s.toUsAsciiBytes();
+			return remote.send(ByteBuffer.wrap(headersBuffer));
 		}
 		
 		ParameterizedHeaderValues transferEncoding;
@@ -327,24 +325,22 @@ public class MimeMessage {
 		catch (Exception e) { transferEncoding = null; }
 		if ((body instanceof IO.KnownSize) && (transferEncoding == null || !transferEncoding.hasMainValue("chunked"))) {
 			Async<IOException> sp = new Async<>();
-			((IO.KnownSize)body).getSizeAsync().onDone((size) -> {
-				new Task.Cpu.FromRunnable("Send MIME to " + remote, body.getPriority(), () -> {
-					if (logger.debug())
-						logger.debug("Sending headers with body of " + size.longValue() + " to " + remote);
-					setContentLength(size.longValue());
-					UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
-					appendHeadersTo(s);
-					s.append(CRLF);
-					byte[] headers = s.toUsAsciiBytes();
-					IAsync<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headers));
-					sendHeaders.onDone(() -> {
-						if (body instanceof IO.Readable.Buffered)
-							IdentityTransfer.send(remote, (IO.Readable.Buffered)body).onDone(sp);
-						else
-							IdentityTransfer.send(remote, body, 65536, 3).onDone(sp);
-					}, sp);
-				}).start();
-			}, sp);
+			((IO.KnownSize)body).getSizeAsync().thenDoOrStart(size -> {
+				if (logger.debug())
+					logger.debug("Sending headers with body of " + size.longValue() + " to " + remote);
+				setContentLength(size.longValue());
+				UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
+				appendHeadersTo(s);
+				s.append(CRLF);
+				byte[] headersBuffer = s.toUsAsciiBytes();
+				IAsync<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headersBuffer));
+				sendHeaders.onDone(() -> {
+					if (body instanceof IO.Readable.Buffered)
+						IdentityTransfer.send(remote, (IO.Readable.Buffered)body).onDone(sp);
+					else
+						IdentityTransfer.send(remote, body, 65536, 3).onDone(sp);
+				}, sp);
+			}, "Send MIME to " + remote, body.getPriority(), sp);
 			return sp;
 		}
 		if (logger.debug())
@@ -354,8 +350,8 @@ public class MimeMessage {
 		UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
 		appendHeadersTo(s);
 		s.append(CRLF);
-		byte[] headers = s.toUsAsciiBytes();
-		IAsync<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headers));
+		byte[] headersBuffer = s.toUsAsciiBytes();
+		IAsync<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headersBuffer));
 		Async<IOException> sp = new Async<>();
 		sendHeaders.onDone(() -> {
 			if (body instanceof IO.Readable.Buffered)

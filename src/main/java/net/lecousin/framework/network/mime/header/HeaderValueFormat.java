@@ -2,6 +2,7 @@ package net.lecousin.framework.network.mime.header;
 
 import java.util.List;
 
+import net.lecousin.framework.network.mime.MimeException;
 import net.lecousin.framework.network.mime.header.parser.MimeHeaderValueParser;
 import net.lecousin.framework.network.mime.header.parser.Token;
 import net.lecousin.framework.util.IString;
@@ -14,12 +15,12 @@ import net.lecousin.framework.util.IString;
 public interface HeaderValueFormat {
 
 	/** Parse the given raw value. */
-	default void parseRawValue(String raw) throws Exception {
+	default void parseRawValue(String raw) throws MimeException {
 		parseTokens(MimeHeaderValueParser.parse(raw));
 	}
 	
 	/** Parse the given tokens. */
-	void parseTokens(List<Token> tokens) throws Exception;
+	void parseTokens(List<Token> tokens) throws MimeException;
 	
 	/** Genreate tokens. */
 	List<Token> generateTokens();

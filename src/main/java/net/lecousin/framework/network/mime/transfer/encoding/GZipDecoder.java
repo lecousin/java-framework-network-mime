@@ -68,7 +68,7 @@ public class GZipDecoder implements ContentDecoder {
 		if (previous == null)
 			unzip.thenStart(task, true);
 		else
-			previous.onDone(() -> { unzip.thenStart(task, true); });
+			previous.onDone(() -> unzip.thenStart(task, true));
 	}
 	
 }

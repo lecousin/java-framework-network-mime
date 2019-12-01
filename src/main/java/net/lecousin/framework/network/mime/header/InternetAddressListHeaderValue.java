@@ -11,10 +11,6 @@ import net.lecousin.framework.network.mime.header.parser.Token;
  */
 public class InternetAddressListHeaderValue implements HeaderValueFormat {
 
-	/** Constructor. */
-	public InternetAddressListHeaderValue() {
-	}
-	
 	protected List<InternetAddressHeaderValue> addresses = new LinkedList<>();
 	
 	public List<InternetAddressHeaderValue> getAddresses() {

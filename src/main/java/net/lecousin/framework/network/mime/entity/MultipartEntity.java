@@ -11,7 +11,6 @@ import java.util.Random;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.async.Async;
 import net.lecousin.framework.concurrent.async.AsyncSupplier;
-import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.LinkedIO;
@@ -19,6 +18,7 @@ import net.lecousin.framework.io.SubIO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.IOInMemoryOrFile;
 import net.lecousin.framework.io.buffering.SimpleBufferedReadable;
+import net.lecousin.framework.network.mime.MimeException;
 import net.lecousin.framework.network.mime.MimeHeader;
 import net.lecousin.framework.network.mime.MimeMessage;
 import net.lecousin.framework.network.mime.MimeUtil;
@@ -40,21 +40,20 @@ public class MultipartEntity extends MimeEntity {
 		this(generateBoundary(), subType);
 	}
 	
-	protected MultipartEntity(MimeMessage mime) throws Exception {
+	protected MultipartEntity(MimeMessage mime) throws MimeException {
 		super(mime);
 		ParameterizedHeaderValue ct = mime.getContentType();
 		if (ct == null)
-			throw new Exception("Missing Content-Type header");
+			throw new MimeException("Missing Content-Type header");
 		String s = ct.getParameterIgnoreCase("boundary");
 		if (s == null)
-			throw new Exception("No boundary specified in Content-Type header");
+			throw new MimeException("No boundary specified in Content-Type header");
 		this.boundary = s.getBytes(StandardCharsets.US_ASCII);
 	}
 	
 	/** Parse the body of the given MimeMessage into a MultipartEntity.
 	 * @param fromReceived if true, the received body is parsed, else the body to send is parsed from the mime message.
 	 */
-	@SuppressWarnings("resource")
 	public static AsyncSupplier<MultipartEntity, IOException> from(MimeMessage mime, boolean fromReceived) {
 		MultipartEntity entity;
 		try { entity = new MultipartEntity(mime); }
@@ -65,8 +64,8 @@ public class MultipartEntity extends MimeEntity {
 			return new AsyncSupplier<>(entity, null);
 		Async<IOException> parse = entity.parse(body, fromReceived);
 		AsyncSupplier<MultipartEntity, IOException> result = new AsyncSupplier<>();
-		parse.onDone(() -> { result.unblockSuccess(entity); }, result);
-		parse.onDone(() -> { body.closeAsync(); });
+		parse.onDone(() -> result.unblockSuccess(entity), result);
+		parse.onDone(body::closeAsync);
 		return result;
 	}
 
@@ -134,8 +133,8 @@ public class MultipartEntity extends MimeEntity {
 		return list;
 	}
 	
-	@SuppressWarnings("resource")
 	@Override
+	@SuppressWarnings("squid:S2095") // not closed because returned
 	public IO.Readable getBodyToSend() {
 		byte[] bound = new byte[6 + boundary.length];
 		bound[0] = bound[boundary.length + 4] = '\r';
@@ -169,7 +168,6 @@ public class MultipartEntity extends MimeEntity {
 	/** Parse the given content.
 	 * @param asReceived if true the received body is filled, else the body to send is filled
 	 */
-	@SuppressWarnings("resource")
 	public Async<IOException> parse(IO.Readable content, boolean asReceived) {
 		IO.Readable.Buffered bio;
 		if (content instanceof IO.Readable.Buffered)
@@ -213,10 +211,7 @@ public class MultipartEntity extends MimeEntity {
 		private int bodyBufferPos = 0;
 		
 		public void nextBuffer() {
-			io.readNextBufferAsync().onDone(
-				(buffer) -> { parse(buffer); },
-				sp
-			);
+			io.readNextBufferAsync().onDone(this::parse, sp);
 		}
 		
 		private void parse(ByteBuffer buffer) {
@@ -224,145 +219,120 @@ public class MultipartEntity extends MimeEntity {
 				sp.error(new EOFException("Unexpected end of multipart content"));
 				return;
 			}
-			new Task.Cpu<Void, NoException>("Parsing multipart content", io.getPriority()) {
-				@Override
-				public Void run() {
-					while (buffer.hasRemaining()) {
-						byte b = buffer.get();
-						if (header != null && body == null) {
-							// reading MIME header
-							if (b == '\n') {
-								String line;
-								if (headerLine.length() > 0 && headerLine.charAt(headerLine.length() - 1) == '\r')
-									line = headerLine.substring(0, headerLine.length() - 1);
-								else
-									line = headerLine.toString();
-								try { header.newLine(line); }
-								catch (Exception e) {
-									sp.error(IO.error(e));
-									return null;
-								}
-								if (line.length() == 0) {
-									// end of MIME headers
-									headerLine = null;
-									body = new IOInMemoryOrFile(8192, io.getPriority(), "Multipart body");
-									continue;
-								}
-								headerLine = new StringBuilder(128);
-								continue;
-							}
-							headerLine.append((char)b);
-							continue;
-						}
-						if (boundaryPos == 0) {
-							if (b == '\r') {
-								// may be start of a boundary
-								if (boundaryRead == null)
-									boundaryRead = new byte[4 + boundary.length + 2];
-								boundaryRead[0] = b;
-								boundaryPos = 1;
-								firstBoundary = false;
-								continue;
-							}
-							if (body != null) {
-								// body data
-								bodyBuffer[bodyBufferPos++] = b;
-								if (bodyBufferPos == bodyBuffer.length) {
-									body.writeAsync(ByteBuffer.wrap(bodyBuffer)).onDone(
-										(written) -> {
-											bodyBufferPos = 0;
-											parse(buffer);
-										}, sp
-									);
-									return null;
-								}
-							} else if (firstBoundary && b == '-') {
-								boundaryRead = new byte[4 + boundary.length + 2];
-								boundaryRead[2] = '-';
-								boundaryPos = 3;
-							}
-							continue;
-						}
-						if (boundaryPos == 1) {
-							if (b == '\n') {
-								boundaryRead[boundaryPos++] = b;
-								continue;
-							}
-							// not a boundary
-							if (!notBoundary(buffer))
-								return null;
-							continue;
-						}
-						if (boundaryPos < 4) {
-							if (b == '-') {
-								boundaryRead[boundaryPos++] = b;
-								continue;
-							}
-							// not a boundary
-							if (!notBoundary(buffer))
-								return null;
-							continue;
-						}
-						if (boundaryPos < 4 + boundary.length) {
-							if (b == boundary[boundaryPos - 4]) {
-								boundaryRead[boundaryPos++] = b;
-								continue;
-							}
-							// not a boundary
-							if (!notBoundary(buffer))
-								return null;
-							continue;
-						}
-						if (boundaryPos == 4 + boundary.length) {
-							if (b == '\r' || b == '-') {
-								boundaryRead[boundaryPos++] = b;
-								continue;
-							}
-							// not a boundary
-							if (!notBoundary(buffer))
-								return null;
-							continue;
-						}
-						if (boundaryRead[boundaryPos - 1] == '\r') {
-							if (b == '\n') {
-								firstBoundary = false;
-								// end of current body
-								if (body != null) {
-									createPart(buffer);
-									return null;
-								}
-								// expecting next header
-								header = new MimeUtil.HeadersLinesReceiver(new LinkedList<>());
-								headerLine = new StringBuilder(128);
-								body = null;
-								bodyBufferPos = 0;
-								boundaryRead = null;
-								boundaryPos = 0;
-								continue;
-							}
-							// not a boundary
-							if (!notBoundary(buffer))
-								return null;
-							continue;
-						}
-						if (b == '-') {
-							// end of multipart
-							if (body != null) {
-								createPart(null);
-								return null;
-							}
-							sp.unblock();
-							return null;
-						}
-						// not a boundary
-						if (!notBoundary(buffer))
-							return null;
+			new Task.Cpu.FromRunnable("Parsing multipart content", io.getPriority(), () -> parseLoop(buffer)).start();
+		}
+		
+		private void parseLoop(ByteBuffer buffer) {
+			while (buffer.hasRemaining()) {
+				byte b = buffer.get();
+				if (header != null && body == null) {
+					// reading MIME header
+					if (b == '\n') {
+						if (!endOfHeaderLine())
+							return;
 						continue;
 					}
-					nextBuffer();
-					return null;
+					headerLine.append((char)b);
+				} else if (boundaryPos == 0) {
+					if (b == '\r') {
+						// may be start of a boundary
+						if (boundaryRead == null)
+							boundaryRead = new byte[4 + boundary.length + 2];
+						boundaryRead[0] = b;
+						boundaryPos = 1;
+						firstBoundary = false;
+					} else if (body != null) {
+						// body data
+						bodyBuffer[bodyBufferPos++] = b;
+						if (bodyBufferPos == bodyBuffer.length) {
+							body.writeAsync(ByteBuffer.wrap(bodyBuffer)).onDone(() -> {
+								bodyBufferPos = 0;
+								parse(buffer);
+							}, sp);
+							return;
+						}
+					} else if (firstBoundary && b == '-') {
+						boundaryRead = new byte[4 + boundary.length + 2];
+						boundaryRead[2] = '-';
+						boundaryPos = 3;
+					}
+				} else {
+					if (!readBoundary(b, buffer))
+						return;
 				}
-			}.start();
+			}
+			nextBuffer();
+		}
+		
+		private boolean endOfHeaderLine() {
+			String line;
+			if (headerLine.length() > 0 && headerLine.charAt(headerLine.length() - 1) == '\r')
+				line = headerLine.substring(0, headerLine.length() - 1);
+			else
+				line = headerLine.toString();
+			try { header.newLine(line); }
+			catch (Exception e) {
+				sp.error(IO.error(e));
+				return false;
+			}
+			if (line.length() == 0) {
+				// end of MIME headers
+				headerLine = null;
+				body = new IOInMemoryOrFile(8192, io.getPriority(), "Multipart body");
+			} else {
+				headerLine = new StringBuilder(128);
+			}
+			return true;
+		}
+		
+		private boolean readBoundary(byte b, ByteBuffer buffer) {
+			if (boundaryPos == 1) {
+				if (b == '\n') {
+					boundaryRead[boundaryPos++] = b;
+					return true;
+				}
+			} else if (boundaryPos < 4) {
+				if (b == '-') {
+					boundaryRead[boundaryPos++] = b;
+					return true;
+				}
+			} else if (boundaryPos < 4 + boundary.length) {
+				if (b == boundary[boundaryPos - 4]) {
+					boundaryRead[boundaryPos++] = b;
+					return true;
+				}
+			} else if (boundaryPos == 4 + boundary.length) {
+				if (b == '\r' || b == '-') {
+					boundaryRead[boundaryPos++] = b;
+					return true;
+				}
+			} else if (boundaryRead[boundaryPos - 1] == '\r') {
+				if (b == '\n') {
+					firstBoundary = false;
+					// end of current body
+					if (body != null) {
+						createPart(buffer);
+						return false;
+					}
+					// expecting next header
+					header = new MimeUtil.HeadersLinesReceiver(new LinkedList<>());
+					headerLine = new StringBuilder(128);
+					body = null;
+					bodyBufferPos = 0;
+					boundaryRead = null;
+					boundaryPos = 0;
+					return true;
+				}
+			} else if (b == '-') {
+				// end of multipart
+				if (body != null) {
+					createPart(null);
+					return false;
+				}
+				sp.unblock();
+				return false;
+			}
+			return notBoundary(buffer);
 		}
 		
 		private boolean notBoundary(ByteBuffer buffer) {
@@ -378,7 +348,7 @@ public class MultipartEntity extends MimeEntity {
 				if (bodyBufferPos == bodyBuffer.length) {
 					int j = i + 1;
 					body.writeAsync(ByteBuffer.wrap(bodyBuffer)).onDone(
-						(written) -> {
+						written -> {
 							if (j < boundaryPos) {
 								System.arraycopy(boundaryRead, j, bodyBuffer, 0, boundaryPos - j);
 								bodyBufferPos = boundaryPos - j;
@@ -402,7 +372,7 @@ public class MultipartEntity extends MimeEntity {
 			// first, we flush the body content if any
 			if (bodyBufferPos > 0) {
 				body.writeAsync(ByteBuffer.wrap(bodyBuffer, 0, bodyBufferPos)).onDone(
-					(written) -> {
+					written -> {
 						bodyBufferPos = 0;
 						createPart(buffer);
 					},
@@ -413,7 +383,7 @@ public class MultipartEntity extends MimeEntity {
 			// then we create the part
 			body.seekSync(SeekType.FROM_BEGINNING, 0);
 			MultipartEntity.this.createPart(header.getHeaders(), body, asReceived).onDone(
-				(part) -> {
+				part -> {
 					parts.add(part);
 					if (buffer != null) {
 						// expecting next header

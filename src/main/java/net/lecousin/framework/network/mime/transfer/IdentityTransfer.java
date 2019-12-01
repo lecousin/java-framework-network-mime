@@ -22,6 +22,8 @@ import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
  * Default transfer, using Content-Length to know how much bytes need to be read, and read it.
  */
 public class IdentityTransfer extends TransferReceiver {
+	
+	public static final String TRANSFER_NAME = "identity";
 
 	/** Constructor. */
 	public IdentityTransfer(MimeMessage mime, ContentDecoder decoder) throws IOException {
@@ -45,7 +47,7 @@ public class IdentityTransfer extends TransferReceiver {
 	@Override
 	public AsyncSupplier<Boolean, IOException> consume(ByteBuffer buf) {
 		if (eot)
-			return new AsyncSupplier<Boolean, IOException>(Boolean.TRUE, null);
+			return new AsyncSupplier<>(Boolean.TRUE, null);
 		AsyncSupplier<Boolean, IOException> result = new AsyncSupplier<>();
 		int l = buf.remaining();
 		if (pos + l > size) {
@@ -55,43 +57,33 @@ public class IdentityTransfer extends TransferReceiver {
 			int limit = buf.limit();
 			buf.limit(limit - (l - l2));
 			IAsync<IOException> decode = decoder.decode(buf);
-			decode.onDone(new Runnable() {
-				@Override
-				public void run() {
-					buf.limit(limit);
-					if (decode.isSuccessful()) {
-						if (!eot)
-							result.unblockSuccess(Boolean.FALSE);
-						else
-							decoder.endOfData().onDone(
-								() -> { result.unblockSuccess(Boolean.TRUE); },
-								result
-							);
-					} else if (decode.hasError())
-						result.unblockError(IO.error(decode.getError()));
+			decode.onDone(() -> {
+				buf.limit(limit);
+				if (decode.isSuccessful()) {
+					if (!eot)
+						result.unblockSuccess(Boolean.FALSE);
 					else
-						result.cancel(decode.getCancelEvent());
+						decoder.endOfData().onDone(() -> result.unblockSuccess(Boolean.TRUE), result);
+				} else if (decode.hasError()) {
+					result.unblockError(IO.error(decode.getError()));
+				} else {
+					result.cancel(decode.getCancelEvent());
 				}
 			});
 		} else {
 			pos += l;
 			eot = pos == size;
 			IAsync<IOException> decode = decoder.decode(buf);
-			decode.onDone(new Runnable() {
-				@Override
-				public void run() {
-					if (decode.isSuccessful())
-						if (!eot)
-							result.unblockSuccess(Boolean.FALSE);
-						else
-							decoder.endOfData().onDone(
-								() -> { result.unblockSuccess(Boolean.TRUE); },
-								result
-							);
-					else if (decode.hasError())
-						result.unblockError(IO.error(decode.getError()));
+			decode.onDone(() -> {
+				if (decode.isSuccessful()) {
+					if (!eot)
+						result.unblockSuccess(Boolean.FALSE);
 					else
-						result.cancel(decode.getCancelEvent());
+						decoder.endOfData().onDone(() -> result.unblockSuccess(Boolean.TRUE), result);
+				} else if (decode.hasError()) {
+					result.unblockError(IO.error(decode.getError()));
+				} else {
+					result.cancel(decode.getCancelEvent());
 				}
 			});
 		}
@@ -104,7 +96,7 @@ public class IdentityTransfer extends TransferReceiver {
 		Task<Void,NoException> task = new Task.Cpu<Void,NoException>("Sending MIME body", Task.PRIORITY_NORMAL) {
 			@Override
 			public Void run() {
-				Production<ByteBuffer> production = new Production<ByteBuffer>(
+				Production<ByteBuffer> production = new Production<>(
 					new IOReaderAsProducer(data, bufferSize), maxBuffers,
 				new Consumer<ByteBuffer>() {
 					@Override
@@ -114,7 +106,7 @@ public class IdentityTransfer extends TransferReceiver {
 					
 					@Override
 					public AsyncSupplier<Void, IOException> endOfProduction() {
-						return new AsyncSupplier<Void,IOException>(null, null);
+						return new AsyncSupplier<>(null, null);
 					}
 					
 					@Override
@@ -160,17 +152,12 @@ public class IdentityTransfer extends TransferReceiver {
 	
 	private static void sendNextBuffer(TCPRemote client, IO.Readable.Buffered data, Async<IOException> result) {
 		data.readNextBufferAsync().onDone(
-			(buffer) -> {
+			buffer -> {
 				if (buffer == null) {
 					result.unblock();
 					return;
 				}
-				client.send(buffer).onDone(
-					() -> {
-						sendNextBuffer(client, data, result);
-					},
-					result
-				);
+				client.send(buffer).onDone(() -> sendNextBuffer(client, data, result), result);
 			},
 			result
 		);

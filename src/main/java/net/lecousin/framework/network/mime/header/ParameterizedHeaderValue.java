@@ -1,8 +1,10 @@
 package net.lecousin.framework.network.mime.header;
 
+import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 
+import net.lecousin.framework.network.mime.MimeException;
 import net.lecousin.framework.network.mime.MimeUtil;
 import net.lecousin.framework.network.mime.header.parser.SpecialCharacter;
 import net.lecousin.framework.network.mime.header.parser.Token;
@@ -84,7 +86,7 @@ public class ParameterizedHeaderValue implements HeaderValueFormat {
 	}
 	
 	@Override
-	public void parseTokens(List<Token> tokens) throws Exception {
+	public void parseTokens(List<Token> tokens) throws MimeException {
 		mainValue = null;
 		parameters.clear();
 		List<List<Token>> params = Token.splitBySpecialCharacter(tokens, ';');
@@ -93,14 +95,18 @@ public class ParameterizedHeaderValue implements HeaderValueFormat {
 			Token.removeComments(param);
 			String s = Token.asText(param);
 			int i = s.indexOf('=');
-			if (i >= 0) {
-				String name = s.substring(0, i).trim();
-				String value = MimeUtil.decodeRFC2047(s.substring(i + 1));
-				parameters.add(new Pair<>(name, value));
-			} else if (mainValue == null) {
-				mainValue = MimeUtil.decodeRFC2047(s);
-			} else {
-				parameters.add(new Pair<>(s, ""));
+			try {
+				if (i >= 0) {
+					String name = s.substring(0, i).trim();
+					String value = MimeUtil.decodeRFC2047(s.substring(i + 1));
+					parameters.add(new Pair<>(name, value));
+				} else if (mainValue == null) {
+					mainValue = MimeUtil.decodeRFC2047(s);
+				} else {
+					parameters.add(new Pair<>(s, ""));
+				}
+			} catch (IOException e) {
+				throw new MimeException("Error decoding RFC2047 value", e);
 			}
 		}
 	}

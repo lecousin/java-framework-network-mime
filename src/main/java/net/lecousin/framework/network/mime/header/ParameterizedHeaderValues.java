@@ -3,6 +3,7 @@ package net.lecousin.framework.network.mime.header;
 import java.util.LinkedList;
 import java.util.List;
 
+import net.lecousin.framework.network.mime.MimeException;
 import net.lecousin.framework.network.mime.header.parser.SpecialCharacter;
 import net.lecousin.framework.network.mime.header.parser.Token;
 
@@ -31,7 +32,7 @@ public class ParameterizedHeaderValues implements HeaderValueFormat {
 	}
 	
 	@Override
-	public void parseTokens(List<Token> tokens) throws Exception {
+	public void parseTokens(List<Token> tokens) throws MimeException {
 		values.clear();
 		List<List<Token>> list = Token.splitBySpecialCharacter(tokens, ',');
 		for (List<Token> subList : list) {

@@ -21,8 +21,9 @@ public final class TransferEncodingFactory {
 	
 	/** Instantiate a TransferReceiver with a ContentDecoder based on the Transfer-Encoding,
 	 * Content-Transfer-Encoding and Content-Encoding headers. */
+	@SuppressWarnings("squid:S3776") // complexity
 	public static TransferReceiver create(MimeMessage mime, IO.Writable out) throws IOException {
-		String transfer = "identity";
+		String transfer = IdentityTransfer.TRANSFER_NAME;
 		LinkedList<String> encoding = new LinkedList<>();
 
 		ParameterizedHeaderValues values;
@@ -38,9 +39,9 @@ public final class TransferEncodingFactory {
 			}
 			if (!encoding.isEmpty()) {
 				String s = encoding.getLast();
-				if ("identity".equals(s))
+				if (IdentityTransfer.TRANSFER_NAME.equals(s))
 					encoding.removeLast();
-				else if ("chunked".equals(s)) {
+				else if (ChunkedTransfer.TRANSFER_NAME.equals(s)) {
 					transfer = s;
 					encoding.removeLast();
 				}
@@ -59,9 +60,9 @@ public final class TransferEncodingFactory {
 			}
 			if (!encoding.isEmpty()) {
 				String s = encoding.getLast();
-				if ("identity".equals(s))
+				if (IdentityTransfer.TRANSFER_NAME.equals(s))
 					encoding.removeLast();
-				else if ("chunked".equals(s)) {
+				else if (ChunkedTransfer.TRANSFER_NAME.equals(s)) {
 					transfer = s;
 					encoding.removeLast();
 				}
@@ -84,7 +85,7 @@ public final class TransferEncodingFactory {
 		for (String coding : encoding)
 			decoder = ContentDecoderFactory.createDecoder(decoder, coding);
 
-		if ("chunked".equals(transfer))
+		if (ChunkedTransfer.TRANSFER_NAME.equals(transfer))
 			return new ChunkedTransfer(mime, decoder);
 		return new IdentityTransfer(mime, decoder);
 	}
