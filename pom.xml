@@ -65,7 +65,7 @@
   	<dependency>
   		<groupId>net.lecousin.framework.network</groupId>
   		<artifactId>core</artifactId>
-  		<version>0.6.1</version>
+  		<version>0.6.2</version>
   	</dependency>
   	<dependency>
   		<groupId>net.lecousin</groupId>
@@ -77,7 +77,7 @@
   	<dependency>
   		<groupId>net.lecousin.framework.network</groupId>
   		<artifactId>core</artifactId>
-  		<version>0.6.1</version>
+  		<version>0.6.2</version>
   		<type>test-jar</type>
   		<scope>test</scope>
   	</dependency>
