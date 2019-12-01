@@ -5,13 +5,13 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
 import net.lecousin.framework.application.LCCore;
-import net.lecousin.framework.concurrent.CancelException;
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.synch.AsyncWork;
-import net.lecousin.framework.concurrent.synch.AsyncWork.AsyncWorkListener;
-import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
-import net.lecousin.framework.concurrent.synch.JoinPoint;
-import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
+import net.lecousin.framework.concurrent.async.Async;
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
+import net.lecousin.framework.concurrent.async.AsyncSupplier.Listener;
+import net.lecousin.framework.concurrent.async.CancelException;
+import net.lecousin.framework.concurrent.async.IAsync;
+import net.lecousin.framework.concurrent.async.JoinPoint;
 import net.lecousin.framework.concurrent.util.production.simple.Consumer;
 import net.lecousin.framework.concurrent.util.production.simple.Production;
 import net.lecousin.framework.exception.NoException;
@@ -49,8 +49,8 @@ public class ChunkedTransfer extends TransferReceiver {
 	private int chunkSizeChars = 0;
 	
 	@Override
-	public AsyncWork<Boolean, IOException> consume(ByteBuffer buf) {
-		AsyncWork<Boolean, IOException> result = new AsyncWork<>();
+	public AsyncSupplier<Boolean, IOException> consume(ByteBuffer buf) {
+		AsyncSupplier<Boolean, IOException> result = new AsyncSupplier<>();
 		ChunkConsumer task = new ChunkConsumer(buf, result);
 		task.start();
 		return result;
@@ -62,14 +62,14 @@ public class ChunkedTransfer extends TransferReceiver {
 	}
 	
 	private class ChunkConsumer extends Task.Cpu<Void,NoException> {
-		private ChunkConsumer(ByteBuffer buf, AsyncWork<Boolean, IOException> ondone) {
+		private ChunkConsumer(ByteBuffer buf, AsyncSupplier<Boolean, IOException> ondone) {
 			super("Reading chunk of data", Task.PRIORITY_NORMAL);
 			this.buf = buf;
 			this.ondone = ondone;
 		}
 		
 		private ByteBuffer buf;
-		private AsyncWork<Boolean, IOException> ondone;
+		private AsyncSupplier<Boolean, IOException> ondone;
 		
 		@Override
 		public Void run() {
@@ -95,7 +95,7 @@ public class ChunkedTransfer extends TransferReceiver {
 							chunkExtension = false;
 							if (chunkSize == 0) {
 								// final chunk of 0
-								decoder.endOfData().listenInline(
+								decoder.endOfData().onDone(
 									() -> { ondone.unblockSuccess(Boolean.TRUE); },
 									ondone
 								);
@@ -121,7 +121,7 @@ public class ChunkedTransfer extends TransferReceiver {
 						chunkExtension = false;
 						if (chunkSize == 0) {
 							// final chunk of 0
-							decoder.endOfData().listenInline(
+							decoder.endOfData().onDone(
 									() -> { ondone.unblockSuccess(Boolean.TRUE); },
 									ondone
 								);
@@ -172,8 +172,8 @@ public class ChunkedTransfer extends TransferReceiver {
 					}
 					if (mime.getLogger().trace())
 						mime.getLogger().trace("Consume end of chunk: " + nb + " bytes, data still available after");
-					ISynchronizationPoint<IOException> decode = decoder.decode(buf);
-					decode.listenInline(new Runnable() {
+					IAsync<IOException> decode = decoder.decode(buf);
+					decode.onDone(new Runnable() {
 						@Override
 						public void run() {
 							buf.limit(limit);
@@ -204,8 +204,8 @@ public class ChunkedTransfer extends TransferReceiver {
 							mime.getLogger().trace("Consume part of chunk: " + l + " bytes, "
 								+ chunkUsed + "/" + chunkSize + " consumed so far, no more data available");
 					}
-					ISynchronizationPoint<IOException> decode = decoder.decode(buf);
-					decode.listenInline(new Runnable() {
+					IAsync<IOException> decode = decoder.decode(buf);
+					decode.onDone(new Runnable() {
 						@Override
 						public void run() {
 							if (decode.isSuccessful())
@@ -224,26 +224,26 @@ public class ChunkedTransfer extends TransferReceiver {
 	}
 	
 	/** Send data from the given Readable to the client using chunked transfer. */
-	public static SynchronizationPoint<IOException> send(TCPRemote client, IO.Readable data, int bufferSize, int maxBuffers) {
-		SynchronizationPoint<IOException> result = new SynchronizationPoint<>();
+	public static Async<IOException> send(TCPRemote client, IO.Readable data, int bufferSize, int maxBuffers) {
+		Async<IOException> result = new Async<>();
 		Logger logger = LCCore.getApplication().getLoggerFactory().getLogger(MimeMessage.class);
 		Production<ByteBuffer> production = new Production<ByteBuffer>(
 			new IOReaderAsProducer(data, bufferSize), maxBuffers,
 		new Consumer<ByteBuffer>() {
 			@Override
-			public AsyncWork<Void,IOException> consume(ByteBuffer product) {
+			public AsyncSupplier<Void,IOException> consume(ByteBuffer product) {
 				if (!product.hasRemaining()) {
-					return new AsyncWork<Void,IOException>(null, null);
+					return new AsyncSupplier<Void,IOException>(null, null);
 				}
 				int size = product.remaining();
 				if (logger.trace())
 					logger.trace("ChunkedTransfer.send from Readable: send chunk of " + size);
 				ByteBuffer header = ByteBuffer.wrap((Integer.toHexString(size) + "\r\n").getBytes(StandardCharsets.US_ASCII));
-				ISynchronizationPoint<IOException> sendHeader = client.send(header);
-				ISynchronizationPoint<IOException> sendProduct = client.send(product);
-				ISynchronizationPoint<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK, 1, 2));
-				AsyncWork<Void,IOException> chunk = new AsyncWork<>();
-				sendEndOfChunk.listenInline(() -> {
+				IAsync<IOException> sendHeader = client.send(header);
+				IAsync<IOException> sendProduct = client.send(product);
+				IAsync<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK, 1, 2));
+				AsyncSupplier<Void,IOException> chunk = new AsyncSupplier<>();
+				sendEndOfChunk.onDone(() -> {
 					if (sendHeader.hasError()) chunk.error(sendHeader.getError());
 					else if (sendHeader.isCancelled()) chunk.cancel(sendHeader.getCancelEvent());
 					else if (sendProduct.hasError()) chunk.error(sendProduct.getError());
@@ -256,12 +256,12 @@ public class ChunkedTransfer extends TransferReceiver {
 			}
 			
 			@Override
-			public AsyncWork<Void, IOException> endOfProduction() {
+			public AsyncSupplier<Void, IOException> endOfProduction() {
 				if (logger.trace())
 					logger.trace("ChunkedTransfer.send from Readable: send final chunk");
-				ISynchronizationPoint<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
-				AsyncWork<Void, IOException> end = new AsyncWork<>();
-				finalChunk.listenInline(() -> {
+				IAsync<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
+				AsyncSupplier<Void, IOException> end = new AsyncSupplier<>();
+				finalChunk.onDone(() -> {
 					if (finalChunk.hasError()) {
 						end.error(finalChunk.getError());
 						result.error(finalChunk.getError());
@@ -290,7 +290,7 @@ public class ChunkedTransfer extends TransferReceiver {
 			@Override
 			public Void run() {
 				production.start();
-				production.getSyncOnFinished().listenInline(new AsyncWorkListener<Void, Exception>() {
+				production.getSyncOnFinished().listen(new Listener<Void, Exception>() {
 					@Override
 					public void ready(Void r) {
 						result.unblock();
@@ -316,8 +316,8 @@ public class ChunkedTransfer extends TransferReceiver {
 	/** Send the given buffered readable by chunk. It uses the readNextBufferAsync method to get a new
 	 * buffer of data, and send a chunk with it to the client.
 	 */
-	public static SynchronizationPoint<IOException> send(TCPRemote client, IO.Readable.Buffered data) {
-		SynchronizationPoint<IOException> result = new SynchronizationPoint<>();
+	public static Async<IOException> send(TCPRemote client, IO.Readable.Buffered data) {
+		Async<IOException> result = new Async<>();
 		byte[] chunkHeader = new byte[10];
 		chunkHeader[8] = (byte)'\r';
 		chunkHeader[9] = (byte)'\n';
@@ -326,17 +326,17 @@ public class ChunkedTransfer extends TransferReceiver {
 	}
 	
 	private static void sendNextBuffer(
-		TCPRemote client, IO.Readable.Buffered data, SynchronizationPoint<IOException> result, byte[] chunkHeader
+		TCPRemote client, IO.Readable.Buffered data, Async<IOException> result, byte[] chunkHeader
 	) {
 		Logger logger = LCCore.getApplication().getLoggerFactory().getLogger(MimeMessage.class);
-		data.readNextBufferAsync().listenInline(
+		data.readNextBufferAsync().onDone(
 			(buffer) -> {
 				if (buffer == null) {
 					// send final chunk
 					if (logger.trace())
 						logger.trace("ChunkedTransfer.send from Buffered: Send final chunk to " + client);
-					ISynchronizationPoint<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
-					finalChunk.listenInline(result);
+					IAsync<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
+					finalChunk.onDone(result);
 					return;
 				}
 				new Task.Cpu<Void, NoException>("Send chunk of data to TCP Client", data.getPriority()) {
@@ -354,11 +354,11 @@ public class ChunkedTransfer extends TransferReceiver {
 						chunkHeader[5] = (byte)StringUtil.encodeHexaDigit((size & 0x00000F00) >> 8);
 						chunkHeader[6] = (byte)StringUtil.encodeHexaDigit((size & 0x000000F0) >> 4);
 						chunkHeader[7] = (byte)StringUtil.encodeHexaDigit((size & 0x0000000F));
-						ISynchronizationPoint<IOException> sendHeader = client.send(ByteBuffer.wrap(chunkHeader));
-						ISynchronizationPoint<IOException> sendProduct = client.send(buffer);
-						ISynchronizationPoint<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK, 1, 2));
-						JoinPoint.fromSynchronizationPointsSimilarError(sendHeader, sendProduct, sendEndOfChunk)
-							.listenInline(() -> {
+						IAsync<IOException> sendHeader = client.send(ByteBuffer.wrap(chunkHeader));
+						IAsync<IOException> sendProduct = client.send(buffer);
+						IAsync<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK, 1, 2));
+						JoinPoint.fromSimilarError(sendHeader, sendProduct, sendEndOfChunk)
+							.onDone(() -> {
 									sendNextBuffer(client, data, result, chunkHeader);
 							}, result);
 						return null;

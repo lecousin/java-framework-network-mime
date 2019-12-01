@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.synch.AsyncWork;
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
@@ -175,7 +175,7 @@ public final class MimeUtil {
 	}
 	
 	/** Parse the input and generate a MimeMessage. */
-	public static AsyncWork<MimeMessage, IOException> parseMimeMessage(IO.Readable.Buffered input) {
+	public static AsyncSupplier<MimeMessage, IOException> parseMimeMessage(IO.Readable.Buffered input) {
 		MessageParser parser = new MessageParser(input);
 		return parser.sp;
 	}
@@ -189,14 +189,14 @@ public final class MimeUtil {
 		}
 		
 		private IO.Readable.Buffered io;
-		private AsyncWork<MimeMessage, IOException> sp = new AsyncWork<>();
+		private AsyncSupplier<MimeMessage, IOException> sp = new AsyncSupplier<>();
 		private MimeMessage mime;
 		private MimeUtil.HeadersLinesReceiver header;
 		private StringBuilder headerLine = new StringBuilder(128);
 		private ContentDecoder bodyDecoder = null;
 		
 		public void nextBuffer() {
-			io.readNextBufferAsync().listenInline(
+			io.readNextBufferAsync().onDone(
 				(buffer) -> { parse(buffer); },
 				sp
 			);
@@ -205,16 +205,16 @@ public final class MimeUtil {
 		private void parse(ByteBuffer buffer) {
 			if (header == null) {
 				if (buffer == null) {
-					bodyDecoder.endOfData().listenInline(() -> {
+					bodyDecoder.endOfData().onDone(() -> {
 						((IOInMemoryOrFile)mime.getBodyReceivedAsInput())
 						.seekAsync(SeekType.FROM_BEGINNING, 0)
-						.listenInline(() -> {
+						.onDone(() -> {
 							sp.unblockSuccess(mime);
 						}, sp);
 					}, sp);
 					return;
 				}
-				bodyDecoder.decode(buffer).listenInline(() -> {
+				bodyDecoder.decode(buffer).onDone(() -> {
 					nextBuffer();
 				}, sp);
 				return;

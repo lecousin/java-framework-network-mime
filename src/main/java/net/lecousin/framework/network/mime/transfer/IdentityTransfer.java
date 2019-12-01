@@ -3,12 +3,12 @@ package net.lecousin.framework.network.mime.transfer;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-import net.lecousin.framework.concurrent.CancelException;
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.synch.AsyncWork;
-import net.lecousin.framework.concurrent.synch.AsyncWork.AsyncWorkListener;
-import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
-import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
+import net.lecousin.framework.concurrent.async.Async;
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
+import net.lecousin.framework.concurrent.async.AsyncSupplier.Listener;
+import net.lecousin.framework.concurrent.async.CancelException;
+import net.lecousin.framework.concurrent.async.IAsync;
 import net.lecousin.framework.concurrent.util.production.simple.Consumer;
 import net.lecousin.framework.concurrent.util.production.simple.Production;
 import net.lecousin.framework.exception.NoException;
@@ -43,10 +43,10 @@ public class IdentityTransfer extends TransferReceiver {
 	}
 
 	@Override
-	public AsyncWork<Boolean, IOException> consume(ByteBuffer buf) {
+	public AsyncSupplier<Boolean, IOException> consume(ByteBuffer buf) {
 		if (eot)
-			return new AsyncWork<Boolean, IOException>(Boolean.TRUE, null);
-		AsyncWork<Boolean, IOException> result = new AsyncWork<>();
+			return new AsyncSupplier<Boolean, IOException>(Boolean.TRUE, null);
+		AsyncSupplier<Boolean, IOException> result = new AsyncSupplier<>();
 		int l = buf.remaining();
 		if (pos + l > size) {
 			int l2 = (int)(size - pos);
@@ -54,8 +54,8 @@ public class IdentityTransfer extends TransferReceiver {
 			eot = pos == size;
 			int limit = buf.limit();
 			buf.limit(limit - (l - l2));
-			ISynchronizationPoint<IOException> decode = decoder.decode(buf);
-			decode.listenInline(new Runnable() {
+			IAsync<IOException> decode = decoder.decode(buf);
+			decode.onDone(new Runnable() {
 				@Override
 				public void run() {
 					buf.limit(limit);
@@ -63,7 +63,7 @@ public class IdentityTransfer extends TransferReceiver {
 						if (!eot)
 							result.unblockSuccess(Boolean.FALSE);
 						else
-							decoder.endOfData().listenInline(
+							decoder.endOfData().onDone(
 								() -> { result.unblockSuccess(Boolean.TRUE); },
 								result
 							);
@@ -76,15 +76,15 @@ public class IdentityTransfer extends TransferReceiver {
 		} else {
 			pos += l;
 			eot = pos == size;
-			ISynchronizationPoint<IOException> decode = decoder.decode(buf);
-			decode.listenInline(new Runnable() {
+			IAsync<IOException> decode = decoder.decode(buf);
+			decode.onDone(new Runnable() {
 				@Override
 				public void run() {
 					if (decode.isSuccessful())
 						if (!eot)
 							result.unblockSuccess(Boolean.FALSE);
 						else
-							decoder.endOfData().listenInline(
+							decoder.endOfData().onDone(
 								() -> { result.unblockSuccess(Boolean.TRUE); },
 								result
 							);
@@ -99,8 +99,8 @@ public class IdentityTransfer extends TransferReceiver {
 	}
 	
 	/** Send the data from the given Readable to the client, using default transfer. */
-	public static SynchronizationPoint<IOException> send(TCPRemote client, IO.Readable data, int bufferSize, int maxBuffers) {
-		SynchronizationPoint<IOException> result = new SynchronizationPoint<>();
+	public static Async<IOException> send(TCPRemote client, IO.Readable data, int bufferSize, int maxBuffers) {
+		Async<IOException> result = new Async<>();
 		Task<Void,NoException> task = new Task.Cpu<Void,NoException>("Sending MIME body", Task.PRIORITY_NORMAL) {
 			@Override
 			public Void run() {
@@ -108,13 +108,13 @@ public class IdentityTransfer extends TransferReceiver {
 					new IOReaderAsProducer(data, bufferSize), maxBuffers,
 				new Consumer<ByteBuffer>() {
 					@Override
-					public AsyncWork<Void,IOException> consume(ByteBuffer product) {
-						return client.send(product).toAsyncWorkVoid();
+					public AsyncSupplier<Void,IOException> consume(ByteBuffer product) {
+						return client.send(product).toAsyncSupplier();
 					}
 					
 					@Override
-					public AsyncWork<Void, IOException> endOfProduction() {
-						return new AsyncWork<Void,IOException>(null, null);
+					public AsyncSupplier<Void, IOException> endOfProduction() {
+						return new AsyncSupplier<Void,IOException>(null, null);
 					}
 					
 					@Override
@@ -128,7 +128,7 @@ public class IdentityTransfer extends TransferReceiver {
 					}
 				});
 				production.start();
-				production.getSyncOnFinished().listenInline(new AsyncWorkListener<Void, Exception>() {
+				production.getSyncOnFinished().listen(new Listener<Void, Exception>() {
 					@Override
 					public void ready(Void r) {
 						result.unblock();
@@ -152,20 +152,20 @@ public class IdentityTransfer extends TransferReceiver {
 	}
 	
 	/** Send the given buffer readable to the network using the TCP client. */
-	public static SynchronizationPoint<IOException> send(TCPRemote client, IO.Readable.Buffered data) {
-		SynchronizationPoint<IOException> result = new SynchronizationPoint<>();
+	public static Async<IOException> send(TCPRemote client, IO.Readable.Buffered data) {
+		Async<IOException> result = new Async<>();
 		sendNextBuffer(client, data, result);
 		return result;
 	}
 	
-	private static void sendNextBuffer(TCPRemote client, IO.Readable.Buffered data, SynchronizationPoint<IOException> result) {
-		data.readNextBufferAsync().listenInline(
+	private static void sendNextBuffer(TCPRemote client, IO.Readable.Buffered data, Async<IOException> result) {
+		data.readNextBufferAsync().onDone(
 			(buffer) -> {
 				if (buffer == null) {
 					result.unblock();
 					return;
 				}
-				client.send(buffer).listenInline(
+				client.send(buffer).onDone(
 					() -> {
 						sendNextBuffer(client, data, result);
 					},

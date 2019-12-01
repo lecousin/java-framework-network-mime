@@ -4,13 +4,13 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.function.Consumer;
 import java.util.zip.Deflater;
 
 import net.lecousin.compression.gzip.GZipWritable;
 import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
-import net.lecousin.framework.event.Listener;
+import net.lecousin.framework.concurrent.async.Async;
 import net.lecousin.framework.io.FileIO;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
@@ -30,7 +30,10 @@ import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.BlockJUnit4ClassRunner;
 
+@RunWith(BlockJUnit4ClassRunner.class)
 public class TestTransfer extends AbstractNetworkTest {
 
 	private static byte[] data;
@@ -51,7 +54,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	}
 	
 	@SuppressWarnings("resource")
-	@Test(timeout=120000)
+	@Test
 	public void testIdentityTransferBuffered() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
 		try {
@@ -70,17 +73,17 @@ public class TestTransfer extends AbstractNetworkTest {
 			ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
 			answer.setBodyReceived(body);
 			TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
-			SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
-			client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
+			Async<IOException> sp = new Async<>();
+			client.getReceiver().readAvailableBytes(16384, 10000).onDone(new Consumer<ByteBuffer>() {
 				@Override
-				public void fire(ByteBuffer buf) {
+				public void accept(ByteBuffer buf) {
 					System.out.println("Client received body data from server: " + buf.remaining());
-					Listener<ByteBuffer> that = this;
-					transfer.consume(buf).listenInline((end) -> {
+					Consumer<ByteBuffer> that = this;
+					transfer.consume(buf).onDone((end) -> {
 						if (end.booleanValue())
 							sp.unblock();
 						else
-							client.getReceiver().readAvailableBytes(16384, 10000).listenInline(that, sp);
+							client.getReceiver().readAvailableBytes(16384, 10000).onDone(that, sp);
 					}, sp);
 				}
 			}, sp);
@@ -98,7 +101,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	}
 
 	@SuppressWarnings("resource")
-	@Test(timeout=120000)
+	@Test
 	public void testIdentityTransferFromFile() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
 		try {
@@ -124,17 +127,17 @@ public class TestTransfer extends AbstractNetworkTest {
 			ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
 			answer.setBodyReceived(body);
 			TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
-			SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
-			client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
+			Async<IOException> sp = new Async<>();
+			client.getReceiver().readAvailableBytes(16384, 10000).onDone(new Consumer<ByteBuffer>() {
 				@Override
-				public void fire(ByteBuffer buf) {
+				public void accept(ByteBuffer buf) {
 					System.out.println("Client received body data from server: " + buf.remaining());
-					Listener<ByteBuffer> that = this;
-					transfer.consume(buf).listenInline((end) -> {
+					Consumer<ByteBuffer> that = this;
+					transfer.consume(buf).onDone((end) -> {
 						if (end.booleanValue())
 							sp.unblock();
 						else
-							client.getReceiver().readAvailableBytes(16384, 10000).listenInline(that, sp);
+							client.getReceiver().readAvailableBytes(16384, 10000).onDone(that, sp);
 					}, sp);
 				}
 			}, sp);
@@ -155,7 +158,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	
 	
 	@SuppressWarnings("resource")
-	@Test(timeout=120000)
+	@Test
 	public void testChunkedTransferBuffered() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
 		try {
@@ -176,17 +179,17 @@ public class TestTransfer extends AbstractNetworkTest {
 			ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
 			answer.setBodyReceived(body);
 			TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
-			SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
-			client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
+			Async<IOException> sp = new Async<>();
+			client.getReceiver().readAvailableBytes(16384, 10000).onDone(new Consumer<ByteBuffer>() {
 				@Override
-				public void fire(ByteBuffer buf) {
+				public void accept(ByteBuffer buf) {
 					System.out.println("Client received body data from server: " + buf.remaining());
-					Listener<ByteBuffer> that = this;
-					transfer.consume(buf).listenInline((end) -> {
+					Consumer<ByteBuffer> that = this;
+					transfer.consume(buf).onDone((end) -> {
 						if (end.booleanValue())
 							sp.unblock();
 						else
-							client.getReceiver().readAvailableBytes(16384, 10000).listenInline(that, sp);
+							client.getReceiver().readAvailableBytes(16384, 10000).onDone(that, sp);
 					}, sp);
 				}
 			}, sp);
@@ -204,7 +207,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	}
 
 	@SuppressWarnings("resource")
-	@Test(timeout=120000)
+	@Test
 	public void testChunkedTransferFromFile() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
 		try {
@@ -232,17 +235,17 @@ public class TestTransfer extends AbstractNetworkTest {
 			ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
 			answer.setBodyReceived(body);
 			TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
-			SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
-			client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
+			Async<IOException> sp = new Async<>();
+			client.getReceiver().readAvailableBytes(16384, 10000).onDone(new Consumer<ByteBuffer>() {
 				@Override
-				public void fire(ByteBuffer buf) {
+				public void accept(ByteBuffer buf) {
 					System.out.println("Client received body data from server: " + buf.remaining());
-					Listener<ByteBuffer> that = this;
-					transfer.consume(buf).listenInline((end) -> {
+					Consumer<ByteBuffer> that = this;
+					transfer.consume(buf).onDone((end) -> {
 						if (end.booleanValue())
 							sp.unblock();
 						else
-							client.getReceiver().readAvailableBytes(16384, 10000).listenInline(that, sp);
+							client.getReceiver().readAvailableBytes(16384, 10000).onDone(that, sp);
 					}, sp);
 				}
 			}, sp);
@@ -263,7 +266,7 @@ public class TestTransfer extends AbstractNetworkTest {
 
 	
 	@SuppressWarnings("resource")
-	@Test(timeout=120000)
+	@Test
 	public void testGzip() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
 		try {
@@ -279,7 +282,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	}
 
 	@SuppressWarnings("resource")
-	@Test(timeout=120000)
+	@Test
 	public void testBase64() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
 		try {
@@ -294,7 +297,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	}
 	
 	@SuppressWarnings("resource")
-	@Test(timeout=120000)
+	@Test
 	public void testQuotedPrintable() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
 		try {
@@ -310,7 +313,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	}
 
 	@SuppressWarnings("resource")
-	@Test(timeout=120000)
+	@Test
 	public void testBase64GZip() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
 		try {
@@ -328,7 +331,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	}
 
 	@SuppressWarnings("resource")
-	@Test(timeout=120000)
+	@Test
 	public void testQuotedPrintableBase64GZip() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
 		try {
@@ -365,21 +368,21 @@ public class TestTransfer extends AbstractNetworkTest {
 			ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
 			answer.setBodyReceived(body);
 			TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
-			SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
-			client.getReceiver().readAvailableBytes(16384, 10000).listenInline(new Listener<ByteBuffer>() {
+			Async<IOException> sp = new Async<>();
+			client.getReceiver().readAvailableBytes(16384, 10000).onDone(new Consumer<ByteBuffer>() {
 				@Override
-				public void fire(ByteBuffer buf) {
+				public void accept(ByteBuffer buf) {
 					if (buf == null) {
 						sp.error(new IOException("Unexpected end of data from server"));
 						return;
 					}
 					System.out.println("Client received body data from server: " + buf.remaining());
-					Listener<ByteBuffer> that = this;
-					transfer.consume(buf).listenInline((end) -> {
+					Consumer<ByteBuffer> that = this;
+					transfer.consume(buf).onDone((end) -> {
 						if (end.booleanValue())
 							sp.unblock();
 						else
-							client.getReceiver().readAvailableBytes(16384, 10000).listenInline(that, sp);
+							client.getReceiver().readAvailableBytes(16384, 10000).onDone(that, sp);
 					}, sp);
 				}
 			}, sp);
@@ -396,7 +399,7 @@ public class TestTransfer extends AbstractNetworkTest {
 		}
 	}
 	
-	@Test(timeout=60000)
+	@Test
 	public void testSendEmptyBody() throws Exception {
 		TCPServer server = new TCPServer();
 		server.setProtocol(new TestTransferProtocol());

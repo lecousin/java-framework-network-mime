@@ -4,8 +4,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
-import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
+import net.lecousin.framework.concurrent.async.Async;
+import net.lecousin.framework.concurrent.async.IAsync;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.encoding.Base64;
 
@@ -20,11 +20,11 @@ public class Base64Decoder implements ContentDecoder {
 	private ContentDecoder next;
 	private byte[] bufIn = new byte[4];
 	private int inPos = 0;
-	private SynchronizationPoint<IOException> lastDecode = null;
+	private Async<IOException> lastDecode = null;
 	
 	@Override
-	public ISynchronizationPoint<IOException> decode(ByteBuffer data) {
-		SynchronizationPoint<IOException> decode = new SynchronizationPoint<>();
+	public IAsync<IOException> decode(ByteBuffer data) {
+		Async<IOException> decode = new Async<>();
 		Task.Cpu<Void, IOException> task = new Task.Cpu<Void, IOException>("Decoding Base64 data", Task.PRIORITY_NORMAL) {
 			@Override
 			public Void run() throws IOException {
@@ -45,8 +45,8 @@ public class Base64Decoder implements ContentDecoder {
 				} catch (Exception e) {
 					throw IO.error(e);
 				}
-				ISynchronizationPoint<IOException> write = next.decode(ByteBuffer.wrap(decoded, 0, decodedPos));
-				write.listenInline(() -> {
+				IAsync<IOException> write = next.decode(ByteBuffer.wrap(decoded, 0, decodedPos));
+				write.onDone(() -> {
 					if (write.hasError()) decode.error(write.getError());
 					else if (write.isCancelled()) decode.cancel(write.getCancelEvent());
 					else decode.unblock();
@@ -59,9 +59,9 @@ public class Base64Decoder implements ContentDecoder {
 			task.start();
 			return decode;
 		}
-		SynchronizationPoint<IOException> previous = lastDecode;
+		Async<IOException> previous = lastDecode;
 		lastDecode = decode;
-		previous.listenInline(() -> {
+		previous.onDone(() -> {
 			if (previous.hasError()) decode.error(decode.getError());
 			else if (previous.isCancelled()) decode.cancel(decode.getCancelEvent());
 			else task.start();
@@ -70,7 +70,7 @@ public class Base64Decoder implements ContentDecoder {
 	}
 	
 	@Override
-	public ISynchronizationPoint<IOException> endOfData() {
+	public IAsync<IOException> endOfData() {
 		return next.endOfData();
 	}
 

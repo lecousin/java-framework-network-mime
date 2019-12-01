@@ -5,9 +5,9 @@ import java.nio.ByteBuffer;
 
 import net.lecousin.compression.gzip.GZipReadable;
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.synch.AsyncWork;
-import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
-import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
+import net.lecousin.framework.concurrent.async.Async;
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
+import net.lecousin.framework.concurrent.async.IAsync;
 import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.out2in.OutputToInputBuffers;
 
@@ -25,28 +25,28 @@ public class GZipDecoder implements ContentDecoder {
 	private ContentDecoder next;
 	private OutputToInputBuffers tmpIO;
 	private GZipReadable gzip;
-	private SynchronizationPoint<IOException> done = new SynchronizationPoint<>();
+	private Async<IOException> done = new Async<>();
 	
 	@Override
-	public ISynchronizationPoint<IOException> decode(ByteBuffer data) {
-		if (done.isUnblocked())
+	public IAsync<IOException> decode(ByteBuffer data) {
+		if (done.isDone())
 			return done;
 		return tmpIO.writeAsync(data);
 	}
 	
 	@Override
-	public ISynchronizationPoint<IOException> endOfData() {
+	public IAsync<IOException> endOfData() {
 		tmpIO.endOfData();
-		done.listenInline(() -> {
+		done.onDone(() -> {
 			tmpIO.closeAsync();
 			gzip.closeAsync();
 		});
 		return done;
 	}
 	
-	private void unzip(ISynchronizationPoint<IOException> previous) {
+	private void unzip(IAsync<IOException> previous) {
 		ByteBuffer buffer = ByteBuffer.allocate(8192);
-		AsyncWork<Integer, IOException> unzip = gzip.readAsync(buffer);
+		AsyncSupplier<Integer, IOException> unzip = gzip.readAsync(buffer);
 		Task.Cpu<Void, NoException> task =
 		new Task.Cpu<Void, NoException>("Transfer unzipped data to next content decoder", Task.PRIORITY_NORMAL) {
 			@Override
@@ -56,7 +56,7 @@ public class GZipDecoder implements ContentDecoder {
 				else {
 					int nb = unzip.getResult().intValue();
 					if (nb <= 0)
-						next.endOfData().listenInline(done);
+						next.endOfData().onDone(done);
 					else {
 						buffer.flip();
 						unzip(next.decode(buffer));
@@ -66,9 +66,9 @@ public class GZipDecoder implements ContentDecoder {
 			}
 		};
 		if (previous == null)
-			unzip.listenAsync(task, true);
+			unzip.thenStart(task, true);
 		else
-			previous.listenInline(() -> { unzip.listenAsync(task, true); });
+			previous.onDone(() -> { unzip.thenStart(task, true); });
 	}
 	
 }

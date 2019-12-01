@@ -102,7 +102,7 @@ public class TestTransferProtocol implements ServerProtocol {
 	}
 	
 	private static void receiveBody(TCPServerClient client, MimeMessage mime, TransferReceiver transfer, ByteBuffersIO body, ByteBuffer data, Runnable onbufferavailable) {
-		transfer.consume(data).listenInline((result) -> {
+		transfer.consume(data).onDone((result) -> {
 			LCCore.getApplication().getDefaultLogger().info("Test data from client consumed, end reached = " + result);
 			data.clear();
 			data.flip();
@@ -142,7 +142,7 @@ public class TestTransferProtocol implements ServerProtocol {
 		if (s != null)
 			answer.setHeaderRaw("X-Test", s);
 		answer.setBodyToSend(body);
-		answer.send(client).listenInline(() -> { client.close(); });
+		answer.send(client).onDone(() -> { client.close(); });
 	}
 
 	@Override

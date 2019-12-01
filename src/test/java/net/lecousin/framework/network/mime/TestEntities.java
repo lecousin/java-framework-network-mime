@@ -12,8 +12,8 @@ import javax.mail.internet.MimeMultipart;
 import net.lecousin.compression.gzip.GZipWritable;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.Threading;
-import net.lecousin.framework.concurrent.synch.AsyncWork;
-import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
+import net.lecousin.framework.concurrent.async.Async;
 import net.lecousin.framework.core.test.LCCoreAbstractTest;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.IOAsInputStream;
@@ -38,7 +38,7 @@ import org.junit.Test;
 
 public class TestEntities extends LCCoreAbstractTest {
 
-	@Test(timeout=120000)
+	@Test
 	public void testFormUrlEncodedEntity() throws Exception {
 		FormUrlEncodedEntity source;
 		source = new FormUrlEncodedEntity();
@@ -61,7 +61,7 @@ public class TestEntities extends LCCoreAbstractTest {
 		io.seekSync(SeekType.FROM_BEGINNING, 0);
 		// parse
 		FormUrlEncodedEntity target = new FormUrlEncodedEntity();
-		SynchronizationPoint<IOException> parse = target.parse(io, StandardCharsets.UTF_8);
+		Async<IOException> parse = target.parse(io, StandardCharsets.UTF_8);
 		parse.blockThrow(0);
 		// check they are the same
 		Iterator<Pair<String, String>> itSrc = source.getParameters().iterator();
@@ -78,12 +78,12 @@ public class TestEntities extends LCCoreAbstractTest {
 	
 	private static ByteBuffersIO generateBody(MimeEntity entity) throws Exception {
 		ByteBuffersIO out = new ByteBuffersIO(false, "MIME entity", Task.PRIORITY_NORMAL);
-		AsyncWork<Long, IOException> copy = IOUtil.copy(entity.getBodyToSend(), out, -1, false, null, 0);
+		AsyncSupplier<Long, IOException> copy = IOUtil.copy(entity.getBodyToSend(), out, -1, false, null, 0);
 		copy.blockThrow(0);
 		return out;
 	}
 	
-	@Test(timeout=60000)
+	@Test
 	public void testParseFormUrlEncodedEntity() throws Exception {
 		@SuppressWarnings("resource")
 		MimeMessage mime = MimeUtil.parseMimeMessage(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("formurlencoded.raw"), "formurlencoded.raw", Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL), 4096)).blockResult(0);
@@ -92,12 +92,12 @@ public class TestEntities extends LCCoreAbstractTest {
 		Assert.assertEquals("flies", entity.getParameter("favorite flavor"));
 	}
 	
-	@Test(timeout=120000)
+	@Test
 	public void testParseMultipart() throws Exception {
 		testParseMultipart("multipart1.raw");
 	}
 
-	@Test(timeout=120000)
+	@Test
 	public void testParseMultipartWithoutLeadingCRLF() throws Exception {
 		testParseMultipart("multipart2.raw");
 	}
@@ -106,7 +106,7 @@ public class TestEntities extends LCCoreAbstractTest {
 	private void testParseMultipart(String filename) throws Exception {
 		MultipartEntity entity = new MultipartEntity("---------------------------114772229410704779042051621609".getBytes(), "form-data");
 		IOFromInputStream body = new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL);
-		SynchronizationPoint<IOException> parse = entity.parse(body, true);
+		Async<IOException> parse = entity.parse(body, true);
 		parse.blockThrow(0);
 		Assert.assertEquals(5, entity.getParts().size());
 		for (MimeMessage p : entity.getParts()) {
@@ -128,14 +128,14 @@ public class TestEntities extends LCCoreAbstractTest {
 		}
 	}
 	
-	@Test(timeout=120000)
+	@Test
 	public void testGenerateMailWithMultipart() throws Exception {
 		MultipartEntity mailText = new MultipartEntity("alternative");
 		mailText.add(MimeUtil.mimeFromString("Hello tester", StandardCharsets.UTF_8, "text/plain"));
 		mailText.add(MimeUtil.mimeFromString("<html><body>Hello tester</body></html>", StandardCharsets.UTF_8, "text/html"));
 		mailText.addHeaderRaw("Subject", "This is a test");
 		ByteBuffersIO out = new ByteBuffersIO(false, "Mail", Task.PRIORITY_NORMAL);
-		AsyncWork<Long, IOException> copy = IOUtil.copy(mailText.getReadableStream(), out, -1, false, null, 0);
+		AsyncSupplier<Long, IOException> copy = IOUtil.copy(mailText.getReadableStream(), out, -1, false, null, 0);
 		copy.blockThrow(0);
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 		String s = IOUtil.readFullyAsStringSync(out, StandardCharsets.UTF_8);
@@ -157,7 +157,7 @@ public class TestEntities extends LCCoreAbstractTest {
 	}
 	
 	@SuppressWarnings("resource")
-	@Test(timeout=120000)
+	@Test
 	public void testFormData() throws Exception {
 		FormDataEntity form = new FormDataEntity();
 		form.addField("test", "1", StandardCharsets.US_ASCII);
@@ -172,7 +172,7 @@ public class TestEntities extends LCCoreAbstractTest {
 		form.addField("hello", "world", StandardCharsets.UTF_8);
 		
 		ByteBuffersIO out = new ByteBuffersIO(false, "Form", Task.PRIORITY_NORMAL);
-		AsyncWork<Long, IOException> copy = IOUtil.copy(form.getReadableStream(), out, -1, false, null, 0);
+		AsyncSupplier<Long, IOException> copy = IOUtil.copy(form.getReadableStream(), out, -1, false, null, 0);
 		copy.blockThrow(0);
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 
@@ -200,7 +200,7 @@ public class TestEntities extends LCCoreAbstractTest {
 		gz.close();
 	}
 
-	@Test(timeout=60000)
+	@Test
 	public void testTextEntity() throws Exception {
 		TextEntity src = new TextEntity("This is a test", StandardCharsets.UTF_8, "text/test");
 		src.setText("This is still a text");
@@ -221,7 +221,7 @@ public class TestEntities extends LCCoreAbstractTest {
 		src.setHeader("List", addresses);
 
 		ByteBuffersIO out = new ByteBuffersIO(false, "Entity", Task.PRIORITY_NORMAL);
-		AsyncWork<Long, IOException> copy = IOUtil.copy(src.getReadableStream(), out, -1, false, null, 0);
+		AsyncSupplier<Long, IOException> copy = IOUtil.copy(src.getReadableStream(), out, -1, false, null, 0);
 		copy.blockThrow(0);
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 		String s = IOUtil.readFullyAsStringSync(out, StandardCharsets.UTF_8);
@@ -254,7 +254,7 @@ public class TestEntities extends LCCoreAbstractTest {
 		out.close();
 	}
 	
-	@Test(timeout=60000)
+	@Test
 	public void testParseEML() throws Exception {
 		@SuppressWarnings("resource")
 		MimeMessage mime = MimeUtil.parseMimeMessage(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("html-attachment-encoded-filename.eml"), "html-attachment-encoded-filename.eml", Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL), 4096)).blockResult(0);

@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
-import net.lecousin.framework.concurrent.synch.AsyncWork;
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
@@ -38,20 +38,20 @@ public class TextEntity extends MimeEntity {
 	 * @param fromReceived if true, the received body is parsed, else the body to send is parsed from the mime message.
 	 */
 	@SuppressWarnings("resource")
-	public static AsyncWork<TextEntity, IOException> from(MimeMessage mime, boolean fromReceived) {
+	public static AsyncSupplier<TextEntity, IOException> from(MimeMessage mime, boolean fromReceived) {
 		TextEntity entity;
 		try { entity = new TextEntity(mime); }
-		catch (Exception e) { return new AsyncWork<>(null, IO.error(e)); }
+		catch (Exception e) { return new AsyncSupplier<>(null, IO.error(e)); }
 		IO.Readable body = fromReceived ? mime.getBodyReceivedAsInput() : mime.getBodyToSend();
 		if (body == null)
-			return new AsyncWork<>(entity, null);
-		AsyncWork<UnprotectedStringBuffer, IOException> task = IOUtil.readFullyAsString(body, entity.charset, body.getPriority());
-		AsyncWork<TextEntity, IOException> result = new AsyncWork<>();
-		task.listenInline((str) -> {
+			return new AsyncSupplier<>(entity, null);
+		AsyncSupplier<UnprotectedStringBuffer, IOException> task = IOUtil.readFullyAsString(body, entity.charset, body.getPriority());
+		AsyncSupplier<TextEntity, IOException> result = new AsyncSupplier<>();
+		task.onDone((str) -> {
 			entity.text = str.asString();
 			result.unblockSuccess(entity);
 		}, result);
-		result.listenInline(() -> { body.closeAsync(); });
+		result.onDone(() -> { body.closeAsync(); });
 		return result;
 	}
 	

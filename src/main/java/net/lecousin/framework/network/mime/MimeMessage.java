@@ -11,11 +11,11 @@ import java.util.List;
 import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.collections.LinkedArrayList;
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.synch.AsyncWork;
-import net.lecousin.framework.concurrent.synch.AsyncWork.AsyncWorkListenerReady;
-import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
-import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
+import net.lecousin.framework.concurrent.async.Async;
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
+import net.lecousin.framework.concurrent.async.IAsync;
 import net.lecousin.framework.io.IO;
+import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.LinkedIO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.log.Logger;
@@ -274,13 +274,13 @@ public class MimeMessage {
 	// --- Receive ---
 	
 	/** Receive header lines from the given client. */
-	public SynchronizationPoint<IOException> readHeader(TCPClient client, int timeout) {
-		SynchronizationPoint<IOException> result = new SynchronizationPoint<>();
+	public Async<IOException> readHeader(TCPClient client, int timeout) {
+		Async<IOException> result = new Async<>();
 		if (logger.debug())
 			logger.debug("Receiving header lines...");
 		MimeUtil.HeadersLinesReceiver linesReceiver = new MimeUtil.HeadersLinesReceiver(headers);
-		AsyncWork<ByteArrayIO,IOException> readLine = client.getReceiver().readUntil((byte)'\n', 1024, timeout);
-		readLine.listenInline(new AsyncWorkListenerReady<ByteArrayIO, IOException>((line, that) -> {
+		AsyncSupplier<ByteArrayIO,IOException> readLine = client.getReceiver().readUntil((byte)'\n', 1024, timeout);
+		readLine.listen(new IOUtil.RecursiveAsyncSupplierListener<ByteArrayIO>((line, that) -> {
 			String s = line.getAsString(StandardCharsets.US_ASCII);
 			if (logger.debug())
 				logger.debug("Header line received: " + s);
@@ -299,8 +299,8 @@ public class MimeMessage {
 				result.unblock();
 				return;
 			}
-			client.getReceiver().readUntil((byte)'\n', 1024, timeout).listenInline(that);
-		}, result));
+			client.getReceiver().readUntil((byte)'\n', 1024, timeout).listen(that);
+		}, result, null));
 		return result;
 	}
 	
@@ -308,7 +308,7 @@ public class MimeMessage {
 	
 	/** Send this MIME to the given TCP connection. */
 	@SuppressWarnings("resource")
-	public ISynchronizationPoint<IOException> send(TCPRemote remote) {
+	public IAsync<IOException> send(TCPRemote remote) {
 		IO.Readable body = getBodyToSend();
 		
 		if (body == null) {
@@ -326,8 +326,8 @@ public class MimeMessage {
 		try { transferEncoding = getFirstHeaderValue(TRANSFER_ENCODING, ParameterizedHeaderValues.class); }
 		catch (Exception e) { transferEncoding = null; }
 		if ((body instanceof IO.KnownSize) && (transferEncoding == null || !transferEncoding.hasMainValue("chunked"))) {
-			SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
-			((IO.KnownSize)body).getSizeAsync().listenInline((size) -> {
+			Async<IOException> sp = new Async<>();
+			((IO.KnownSize)body).getSizeAsync().onDone((size) -> {
 				new Task.Cpu.FromRunnable("Send MIME to " + remote, body.getPriority(), () -> {
 					if (logger.debug())
 						logger.debug("Sending headers with body of " + size.longValue() + " to " + remote);
@@ -336,12 +336,12 @@ public class MimeMessage {
 					appendHeadersTo(s);
 					s.append(CRLF);
 					byte[] headers = s.toUsAsciiBytes();
-					ISynchronizationPoint<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headers));
-					sendHeaders.listenInline(() -> {
+					IAsync<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headers));
+					sendHeaders.onDone(() -> {
 						if (body instanceof IO.Readable.Buffered)
-							IdentityTransfer.send(remote, (IO.Readable.Buffered)body).listenInline(sp);
+							IdentityTransfer.send(remote, (IO.Readable.Buffered)body).onDone(sp);
 						else
-							IdentityTransfer.send(remote, body, 65536, 3).listenInline(sp);
+							IdentityTransfer.send(remote, body, 65536, 3).onDone(sp);
 					}, sp);
 				}).start();
 			}, sp);
@@ -355,13 +355,13 @@ public class MimeMessage {
 		appendHeadersTo(s);
 		s.append(CRLF);
 		byte[] headers = s.toUsAsciiBytes();
-		ISynchronizationPoint<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headers));
-		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
-		sendHeaders.listenInline(() -> {
+		IAsync<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headers));
+		Async<IOException> sp = new Async<>();
+		sendHeaders.onDone(() -> {
 			if (body instanceof IO.Readable.Buffered)
-				ChunkedTransfer.send(remote, (IO.Readable.Buffered)body).listenInline(sp);
+				ChunkedTransfer.send(remote, (IO.Readable.Buffered)body).onDone(sp);
 			else
-				ChunkedTransfer.send(remote, body, 65536, 3).listenInline(sp);
+				ChunkedTransfer.send(remote, body, 65536, 3).onDone(sp);
 		}, sp);
 		return sp;
 	}

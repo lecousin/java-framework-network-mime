@@ -11,8 +11,8 @@ import java.util.LinkedList;
 import java.util.List;
 
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.synch.AsyncWork;
-import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
+import net.lecousin.framework.concurrent.async.Async;
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
@@ -38,14 +38,14 @@ public class FormUrlEncodedEntity extends MimeEntity {
 	 * @param fromReceived if true, the received body is parsed, else the body to send is parsed from the mime message.
 	 */
 	@SuppressWarnings("resource")
-	public static AsyncWork<FormUrlEncodedEntity, Exception> from(MimeMessage mime, boolean fromReceived) {
+	public static AsyncSupplier<FormUrlEncodedEntity, IOException> from(MimeMessage mime, boolean fromReceived) {
 		FormUrlEncodedEntity entity;
 		try { entity = new FormUrlEncodedEntity(mime); }
-		catch (Exception e) { return new AsyncWork<>(null, e); }
+		catch (Exception e) { return new AsyncSupplier<>(null, IO.error(e)); }
 		
 		IO.Readable body = fromReceived ? mime.getBodyReceivedAsInput() : mime.getBodyToSend();
 		if (body == null)
-			return new AsyncWork<>(entity, null);
+			return new AsyncSupplier<>(entity, null);
 		Charset charset = null;
 		try {
 			ParameterizedHeaderValue type = mime.getContentType();
@@ -57,10 +57,10 @@ public class FormUrlEncodedEntity extends MimeEntity {
 		}
 		if (charset == null)
 			charset = StandardCharsets.ISO_8859_1;
-		SynchronizationPoint<IOException> parse = entity.parse(body, charset);
-		AsyncWork<FormUrlEncodedEntity, Exception> result = new AsyncWork<>();
-		parse.listenInlineSP(() -> { result.unblockSuccess(entity); }, result);
-		parse.listenInline(() -> { body.closeAsync(); });
+		Async<IOException> parse = entity.parse(body, charset);
+		AsyncSupplier<FormUrlEncodedEntity, IOException> result = new AsyncSupplier<>();
+		parse.onDone(() -> { result.unblockSuccess(entity); }, result);
+		parse.onDone(() -> { body.closeAsync(); });
 		return result;
 	}
 	
@@ -93,10 +93,10 @@ public class FormUrlEncodedEntity extends MimeEntity {
 	}
 
 	/** Parse the given source. */
-	public SynchronizationPoint<IOException> parse(IO.Readable source, Charset charset) {
+	public Async<IOException> parse(IO.Readable source, Charset charset) {
 		@SuppressWarnings("resource")
 		BufferedReadableCharacterStream stream = new BufferedReadableCharacterStream(source, charset, 512, 8);
-		SynchronizationPoint<IOException> result = new SynchronizationPoint<>();
+		Async<IOException> result = new Async<>();
 		new Task.Cpu<Void, NoException>(
 			"Parsing www-form-urlencoded",
 			source.getPriority(),

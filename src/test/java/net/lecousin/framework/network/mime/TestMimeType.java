@@ -6,7 +6,7 @@ import org.junit.Test;
 
 public class TestMimeType extends LCCoreAbstractTest {
 
-	@Test(timeout=30000)
+	@Test
 	public void test() {
 		MimeType.defaultByExtension.get("html");
 	}

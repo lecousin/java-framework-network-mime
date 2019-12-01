@@ -3,7 +3,7 @@ package net.lecousin.framework.network.mime.transfer;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-import net.lecousin.framework.concurrent.synch.AsyncWork;
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.network.mime.MimeMessage;
 import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
 
@@ -22,7 +22,7 @@ public abstract class TransferReceiver {
 	protected ContentDecoder decoder;
 	
 	/** the returned work is true if the end has been reached. */
-	public abstract AsyncWork<Boolean,IOException> consume(ByteBuffer buf);
+	public abstract AsyncSupplier<Boolean,IOException> consume(ByteBuffer buf);
 	
 	/** Return true if the transfer is not expected to be empty. */
 	public abstract boolean isExpectingData();

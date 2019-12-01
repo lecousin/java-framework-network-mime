@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.Random;
 
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.synch.AsyncWork;
-import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
+import net.lecousin.framework.concurrent.async.Async;
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
@@ -55,18 +55,18 @@ public class MultipartEntity extends MimeEntity {
 	 * @param fromReceived if true, the received body is parsed, else the body to send is parsed from the mime message.
 	 */
 	@SuppressWarnings("resource")
-	public static AsyncWork<MultipartEntity, Exception> from(MimeMessage mime, boolean fromReceived) {
+	public static AsyncSupplier<MultipartEntity, IOException> from(MimeMessage mime, boolean fromReceived) {
 		MultipartEntity entity;
 		try { entity = new MultipartEntity(mime); }
-		catch (Exception e) { return new AsyncWork<>(null, e); }
+		catch (Exception e) { return new AsyncSupplier<>(null, IO.error(e)); }
 		
 		IO.Readable body = fromReceived ? mime.getBodyReceivedAsInput() : mime.getBodyToSend();
 		if (body == null)
-			return new AsyncWork<>(entity, null);
-		SynchronizationPoint<IOException> parse = entity.parse(body, fromReceived);
-		AsyncWork<MultipartEntity, Exception> result = new AsyncWork<>();
-		parse.listenInlineSP(() -> { result.unblockSuccess(entity); }, result);
-		parse.listenInline(() -> { body.closeAsync(); });
+			return new AsyncSupplier<>(entity, null);
+		Async<IOException> parse = entity.parse(body, fromReceived);
+		AsyncSupplier<MultipartEntity, IOException> result = new AsyncSupplier<>();
+		parse.onDone(() -> { result.unblockSuccess(entity); }, result);
+		parse.onDone(() -> { body.closeAsync(); });
 		return result;
 	}
 
@@ -170,38 +170,38 @@ public class MultipartEntity extends MimeEntity {
 	 * @param asReceived if true the received body is filled, else the body to send is filled
 	 */
 	@SuppressWarnings("resource")
-	public SynchronizationPoint<IOException> parse(IO.Readable content, boolean asReceived) {
+	public Async<IOException> parse(IO.Readable content, boolean asReceived) {
 		IO.Readable.Buffered bio;
 		if (content instanceof IO.Readable.Buffered)
 			bio = (IO.Readable.Buffered)content;
 		else
 			bio = new SimpleBufferedReadable(content, 8192);
-		SynchronizationPoint<IOException> sp = new SynchronizationPoint<>();
+		Async<IOException> sp = new Async<>();
 		Parser parser = new Parser(bio, sp, asReceived);
 		parser.nextBuffer();
 		return sp;
 	}
 	
-	protected AsyncWork<MimeMessage, IOException> createPart(List<MimeHeader> headers, IOInMemoryOrFile body, boolean asReceived) {
+	protected AsyncSupplier<MimeMessage, IOException> createPart(List<MimeHeader> headers, IOInMemoryOrFile body, boolean asReceived) {
 		MimeMessage mime = new MimeMessage();
 		mime.getHeaders().addAll(headers);
 		if (asReceived)
 			mime.setBodyReceived(body);
 		else
 			mime.setBodyToSend(body);
-		return new AsyncWork<>(mime, null);
+		return new AsyncSupplier<>(mime, null);
 	}
 			
 	private class Parser {
 		
-		public Parser(IO.Readable.Buffered io, SynchronizationPoint<IOException> sp, boolean asReceived) {
+		public Parser(IO.Readable.Buffered io, Async<IOException> sp, boolean asReceived) {
 			this.io = io;
 			this.sp = sp;
 			this.asReceived = asReceived;
 		}
 		
 		private IO.Readable.Buffered io;
-		private SynchronizationPoint<IOException> sp;
+		private Async<IOException> sp;
 		private boolean asReceived;
 		private byte[] boundaryRead = null;
 		private int boundaryPos = 0;
@@ -213,7 +213,7 @@ public class MultipartEntity extends MimeEntity {
 		private int bodyBufferPos = 0;
 		
 		public void nextBuffer() {
-			io.readNextBufferAsync().listenInline(
+			io.readNextBufferAsync().onDone(
 				(buffer) -> { parse(buffer); },
 				sp
 			);
@@ -268,7 +268,7 @@ public class MultipartEntity extends MimeEntity {
 								// body data
 								bodyBuffer[bodyBufferPos++] = b;
 								if (bodyBufferPos == bodyBuffer.length) {
-									body.writeAsync(ByteBuffer.wrap(bodyBuffer)).listenInline(
+									body.writeAsync(ByteBuffer.wrap(bodyBuffer)).onDone(
 										(written) -> {
 											bodyBufferPos = 0;
 											parse(buffer);
@@ -377,7 +377,7 @@ public class MultipartEntity extends MimeEntity {
 				bodyBuffer[bodyBufferPos++] = boundaryRead[i];
 				if (bodyBufferPos == bodyBuffer.length) {
 					int j = i + 1;
-					body.writeAsync(ByteBuffer.wrap(bodyBuffer)).listenInline(
+					body.writeAsync(ByteBuffer.wrap(bodyBuffer)).onDone(
 						(written) -> {
 							if (j < boundaryPos) {
 								System.arraycopy(boundaryRead, j, bodyBuffer, 0, boundaryPos - j);
@@ -401,7 +401,7 @@ public class MultipartEntity extends MimeEntity {
 		private void createPart(ByteBuffer buffer) {
 			// first, we flush the body content if any
 			if (bodyBufferPos > 0) {
-				body.writeAsync(ByteBuffer.wrap(bodyBuffer, 0, bodyBufferPos)).listenInline(
+				body.writeAsync(ByteBuffer.wrap(bodyBuffer, 0, bodyBufferPos)).onDone(
 					(written) -> {
 						bodyBufferPos = 0;
 						createPart(buffer);
@@ -412,7 +412,7 @@ public class MultipartEntity extends MimeEntity {
 			}
 			// then we create the part
 			body.seekSync(SeekType.FROM_BEGINNING, 0);
-			MultipartEntity.this.createPart(header.getHeaders(), body, asReceived).listenInline(
+			MultipartEntity.this.createPart(header.getHeaders(), body, asReceived).onDone(
 				(part) -> {
 					parts.add(part);
 					if (buffer != null) {

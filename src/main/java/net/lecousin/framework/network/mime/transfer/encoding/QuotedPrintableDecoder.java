@@ -4,8 +4,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
-import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
+import net.lecousin.framework.concurrent.async.Async;
+import net.lecousin.framework.concurrent.async.IAsync;
 import net.lecousin.framework.io.encoding.QuotedPrintable;
 
 /**
@@ -21,11 +21,11 @@ public class QuotedPrintableDecoder implements ContentDecoder {
 	
 	private ContentDecoder next;
 	private byte[] previousRemainingData = null;
-	private SynchronizationPoint<IOException> lastDecode = null;
+	private Async<IOException> lastDecode = null;
 
 	@Override
-	public ISynchronizationPoint<IOException> decode(ByteBuffer data) {
-		SynchronizationPoint<IOException> decode = new SynchronizationPoint<>();
+	public IAsync<IOException> decode(ByteBuffer data) {
+		Async<IOException> decode = new Async<>();
 		Task<Void, IOException> task = new Task.Cpu<Void, IOException>("Decoding QuotedPrintable data", Task.PRIORITY_NORMAL) {
 			@Override
 			public Void run() {
@@ -48,8 +48,8 @@ public class QuotedPrintableDecoder implements ContentDecoder {
 					input.get(previousRemainingData, 0, input.remaining());
 				} else
 					previousRemainingData = null;
-				ISynchronizationPoint<IOException> write = next.decode(decoded);
-				write.listenInline(() -> {
+				IAsync<IOException> write = next.decode(decoded);
+				write.onDone(() -> {
 					if (write.hasError()) decode.error(write.getError());
 					else if (write.isCancelled()) decode.cancel(write.getCancelEvent());
 					else decode.unblock();
@@ -62,9 +62,9 @@ public class QuotedPrintableDecoder implements ContentDecoder {
 			task.start();
 			return decode;
 		}
-		SynchronizationPoint<IOException> previous = lastDecode;
+		Async<IOException> previous = lastDecode;
 		lastDecode = decode;
-		previous.listenInline(() -> {
+		previous.onDone(() -> {
 			if (previous.hasError()) decode.error(decode.getError());
 			else if (previous.isCancelled()) decode.cancel(decode.getCancelEvent());
 			else task.start();
@@ -73,7 +73,7 @@ public class QuotedPrintableDecoder implements ContentDecoder {
 	}
 	
 	@Override
-	public ISynchronizationPoint<IOException> endOfData() {
+	public IAsync<IOException> endOfData() {
 		return next.endOfData();
 	}
 

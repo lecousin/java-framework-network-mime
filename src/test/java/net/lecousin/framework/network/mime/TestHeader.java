@@ -20,7 +20,7 @@ import org.junit.Test;
 
 public class TestHeader extends LCCoreAbstractTest {
 
-	@Test(timeout=30000)
+	@Test
 	public void testMimeHeader() throws Exception {
 		MimeHeader h = new MimeHeader("X-Test", "toto; titi=tata; (a comment) hello=world, heho, aa; bb=cc");
 		Assert.assertEquals("X-Test", h.getName());
@@ -84,7 +84,7 @@ public class TestHeader extends LCCoreAbstractTest {
 		mime.getReadableStream().close();
 	}
 	
-	@Test(timeout=30000)
+	@Test
 	public void testParser() {
 		List<Token> tokens = MimeHeaderValueParser.parse("hello (a comment)  world [domain]  <user@mail.com> \"bonjour  \\\"ami\\\"\"");
 		Iterator<Token> it = tokens.iterator();

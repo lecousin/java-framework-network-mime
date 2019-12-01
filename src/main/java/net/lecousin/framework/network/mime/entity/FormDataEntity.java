@@ -10,10 +10,10 @@ import java.util.LinkedList;
 import java.util.List;
 
 import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.synch.AsyncWork;
-import net.lecousin.framework.concurrent.synch.ISynchronizationPoint;
-import net.lecousin.framework.concurrent.synch.JoinPoint;
-import net.lecousin.framework.concurrent.synch.SynchronizationPoint;
+import net.lecousin.framework.concurrent.async.Async;
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
+import net.lecousin.framework.concurrent.async.IAsync;
+import net.lecousin.framework.concurrent.async.JoinPoint;
 import net.lecousin.framework.concurrent.tasks.drives.RemoveFileTask;
 import net.lecousin.framework.io.FileIO;
 import net.lecousin.framework.io.IO;
@@ -147,15 +147,15 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 	}
 	
 	@Override
-	public ISynchronizationPoint<IOException> closeAsync() {
+	public IAsync<IOException> closeAsync() {
 		JoinPoint<Exception> jp = new JoinPoint<>();
 		for (MimeMessage p : parts) {
 			if (!(p instanceof PartFile)) continue;
 			jp.addToJoin(((PartFile)p).getReadableStream().closeAsync());
 		}
 		jp.start();
-		SynchronizationPoint<IOException> result = new SynchronizationPoint<>();
-		jp.listenInline(() -> {
+		Async<IOException> result = new Async<>();
+		jp.onDone(() -> {
 			if (jp.hasError())
 				result.error(IO.error(jp.getError()));
 			else
@@ -164,9 +164,8 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 		return result;
 	}
 	
-	@SuppressWarnings("resource")
 	@Override
-	protected AsyncWork<MimeMessage, IOException> createPart(List<MimeHeader> headers, IOInMemoryOrFile body, boolean asReceived) {
+	protected AsyncSupplier<MimeMessage, IOException> createPart(List<MimeHeader> headers, IOInMemoryOrFile body, boolean asReceived) {
 		try {
 			ParameterizedHeaderValue dispo = null;
 			for (MimeHeader h : headers)
@@ -200,7 +199,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 
 				ByteBuffersIO out = new ByteBuffersIO(false, "form-data field value", Task.PRIORITY_NORMAL);
 				ContentDecoder decoder = ContentDecoderFactory.createDecoder(out, new MimeMessage(headers));
-				AsyncWork<MimeMessage, IOException> result = new AsyncWork<>();
+				AsyncSupplier<MimeMessage, IOException> result = new AsyncSupplier<>();
 				if (decoder instanceof IdentityDecoder) {
 					readField(fieldName, body, charset, result); // no encoding
 					out.closeAsync();
@@ -216,25 +215,25 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 			FileIO.ReadWrite io = new FileIO.ReadWrite(tmp, Task.PRIORITY_NORMAL);
 			ContentDecoder decoder = ContentDecoderFactory.createDecoder(io, new MimeMessage(headers));
 			if (decoder instanceof IdentityDecoder) {
-				io.closeAsync().listenInline(() -> {
+				io.closeAsync().onDone(() -> {
 					new RemoveFileTask(tmp, Task.PRIORITY_LOW).start();
 				});
-				return new AsyncWork<>(new PartFile(fieldName, filename, type, body), null);
+				return new AsyncSupplier<>(new PartFile(fieldName, filename, type, body), null);
 			}
-			AsyncWork<MimeMessage, IOException> result = new AsyncWork<>();
+			AsyncSupplier<MimeMessage, IOException> result = new AsyncSupplier<>();
 			decodeFile(fieldName, filename, type, body, decoder, io, result);
 			io.addCloseListener(() -> {
 				new RemoveFileTask(tmp, Task.PRIORITY_LOW).start();
 			});
 			return result;
 		} catch (Exception e) {
-			return new AsyncWork<>(null, IO.error(e));
+			return new AsyncSupplier<>(null, IO.error(e));
 		}
 	}
 	
-	private static void readField(String fieldName, IO.Readable content, Charset charset, AsyncWork<MimeMessage, IOException> result) {
-		AsyncWork<UnprotectedStringBuffer, IOException> read = IOUtil.readFullyAsString(content, charset, Task.PRIORITY_NORMAL);
-		read.listenInline(() -> {
+	private static void readField(String fieldName, IO.Readable content, Charset charset, AsyncSupplier<MimeMessage, IOException> result) {
+		AsyncSupplier<UnprotectedStringBuffer, IOException> read = IOUtil.readFullyAsString(content, charset, Task.PRIORITY_NORMAL);
+		read.onDone(() -> {
 			if (read.hasError()) {
 				result.error(read.getError());
 				return;
@@ -245,24 +244,24 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 	
 	private static void decodeField(
 		String fieldName, ContentDecoder decoder, IOInMemoryOrFile encoded, ByteBuffersIO decoded,
-		Charset charset, AsyncWork<MimeMessage, IOException> result
+		Charset charset, AsyncSupplier<MimeMessage, IOException> result
 	) {
 		ByteBuffer buf = ByteBuffer.allocate((int)encoded.getSizeSync());
-		AsyncWork<Integer, IOException> read = encoded.readFullyAsync(buf);
-		read.listenInline(() -> {
+		AsyncSupplier<Integer, IOException> read = encoded.readFullyAsync(buf);
+		read.onDone(() -> {
 			if (read.hasError()) {
 				result.error(new IOException("Error reading value of form-data field " + fieldName, read.getError()));
 				return;
 			}
 			buf.flip();
-			ISynchronizationPoint<IOException> decode = decoder.decode(buf);
-			decode.listenInline(() -> {
+			IAsync<IOException> decode = decoder.decode(buf);
+			decode.onDone(() -> {
 				if (decode.hasError()) {
 					result.error(new IOException("Error decoding value of form-data field " + fieldName, decode.getError()));
 					return;
 				}
-				ISynchronizationPoint<IOException> end = decoder.endOfData();
-				end.listenInline(() -> {
+				IAsync<IOException> end = decoder.endOfData();
+				end.onDone(() -> {
 					if (end.hasError()) {
 						result.error(new IOException("Error decoding value of form-data field " + fieldName, end.getError()));
 						return;
@@ -276,35 +275,35 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 	
 	private static void decodeFile(
 		String fieldName, String filename, ParameterizedHeaderValue contentType, IO.Readable encoded,
-		ContentDecoder decoder, FileIO.ReadWrite file, AsyncWork<MimeMessage, IOException> result
+		ContentDecoder decoder, FileIO.ReadWrite file, AsyncSupplier<MimeMessage, IOException> result
 	) {
 		ByteBuffer buf = ByteBuffer.allocate(65536);
-		AsyncWork<Integer, IOException> read = encoded.readFullyAsync(buf);
-		read.listenAsync(new Task.Cpu.FromRunnable("Reading form-data file", Task.PRIORITY_NORMAL, () -> {
+		AsyncSupplier<Integer, IOException> read = encoded.readFullyAsync(buf);
+		read.thenStart(new Task.Cpu.FromRunnable("Reading form-data file", Task.PRIORITY_NORMAL, () -> {
 			if (read.hasError()) {
 				result.error(new IOException("Error reading value of form-data field " + fieldName, read.getError()));
 				file.closeAsync();
 				return;
 			}
 			buf.flip();
-			ISynchronizationPoint<IOException> decode = decoder.decode(buf);
-			decode.listenInline(() -> {
+			IAsync<IOException> decode = decoder.decode(buf);
+			decode.onDone(() -> {
 				if (decode.hasError()) {
 					result.error(new IOException("Error decoding value of form-data field " + fieldName, decode.getError()));
 					file.closeAsync();
 					return;
 				}
 				if (read.getResult().intValue() < 65536) {
-					ISynchronizationPoint<IOException> end = decoder.endOfData();
-					end.listenInline(() -> {
+					IAsync<IOException> end = decoder.endOfData();
+					end.onDone(() -> {
 						if (end.hasError()) {
 							result.error(new IOException("Error decoding value of form-data field "
 								+ fieldName, end.getError()));
 							file.closeAsync();
 							return;
 						}
-						AsyncWork<Long, IOException> seek = file.seekAsync(SeekType.FROM_BEGINNING, 0);
-						seek.listenInline(() -> {
+						AsyncSupplier<Long, IOException> seek = file.seekAsync(SeekType.FROM_BEGINNING, 0);
+						seek.onDone(() -> {
 							if (seek.hasError()) {
 								result.error(seek.getError());
 								file.closeAsync();
