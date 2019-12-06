@@ -209,14 +209,7 @@ public class ChunkedTransfer extends TransferReceiver {
 							+ chunkUsed + "/" + chunkSize + " consumed so far, no more data available");
 				}
 				IAsync<IOException> decode = decoder.decode(buf);
-				decode.onDone(() -> {
-					if (decode.isSuccessful())
-						onDone.unblockSuccess(Boolean.FALSE);
-					else if (decode.hasError())
-						onDone.unblockError(IO.error(decode.getError()));
-					else
-						onDone.unblockCancel(decode.getCancelEvent());
-				});
+				decode.onDone(() -> onDone.unblockSuccess(Boolean.FALSE), onDone, IO::error);
 			}
 		}
 		

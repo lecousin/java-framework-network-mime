@@ -1,6 +1,5 @@
 package net.lecousin.framework.network.mime.transfer.encoding;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import net.lecousin.framework.io.encoding.QuotedPrintable;
@@ -19,7 +18,7 @@ public class QuotedPrintableDecoder extends AbstractStepDecoder {
 	private byte[] previousRemainingData = null;
 
 	@Override
-	protected ByteBuffer decodeStep(ByteBuffer data) throws IOException {
+	protected ByteBuffer decodeStep(ByteBuffer data) throws Exception {
 		ByteBuffer input;
 		if (previousRemainingData != null) {
 			byte[] b = new byte[previousRemainingData.length + data.remaining()];

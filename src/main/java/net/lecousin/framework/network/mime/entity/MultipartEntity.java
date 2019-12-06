@@ -215,11 +215,10 @@ public class MultipartEntity extends MimeEntity {
 		}
 		
 		private void parse(ByteBuffer buffer) {
-			if (buffer == null) {
+			if (buffer == null)
 				sp.error(new EOFException("Unexpected end of multipart content"));
-				return;
-			}
-			new Task.Cpu.FromRunnable("Parsing multipart content", io.getPriority(), () -> parseLoop(buffer)).start();
+			else
+				new Task.Cpu.FromRunnable("Parsing multipart content", io.getPriority(), () -> parseLoop(buffer)).start();
 		}
 		
 		private void parseLoop(ByteBuffer buffer) {

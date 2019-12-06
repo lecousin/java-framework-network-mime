@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.async.Async;
 import net.lecousin.framework.concurrent.async.IAsync;
+import net.lecousin.framework.io.IO;
 
 /** Abstract content decoder that needs steps to decode data. */
 public abstract class AbstractStepDecoder implements ContentDecoder {
@@ -25,16 +26,12 @@ public abstract class AbstractStepDecoder implements ContentDecoder {
 			public Void run() {
 				ByteBuffer decoded;
 				try { decoded = decodeStep(data); }
-				catch (IOException e) {
-					decode.error(e);
+				catch (Exception e) {
+					decode.error(IO.error(e));
 					return null;
 				}
 				IAsync<IOException> write = next.decode(decoded);
-				write.onDone(() -> {
-					if (write.hasError()) decode.error(write.getError());
-					else if (write.isCancelled()) decode.cancel(write.getCancelEvent());
-					else decode.unblock();
-				});
+				write.onDone(decode);
 				return null;
 			}
 		};
@@ -45,15 +42,11 @@ public abstract class AbstractStepDecoder implements ContentDecoder {
 		}
 		Async<IOException> previous = lastDecode;
 		lastDecode = decode;
-		previous.onDone(() -> {
-			if (previous.hasError()) decode.error(decode.getError());
-			else if (previous.isCancelled()) decode.cancel(decode.getCancelEvent());
-			else task.start();
-		});
+		previous.thenStart(task, decode);
 		return decode;
 	}
 	
-	protected abstract ByteBuffer decodeStep(ByteBuffer data) throws IOException;
+	protected abstract ByteBuffer decodeStep(ByteBuffer data) throws Exception;
 	
 	@Override
 	public IAsync<IOException> endOfData() {

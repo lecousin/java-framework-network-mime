@@ -48,27 +48,19 @@ public class GZipDecoder implements ContentDecoder {
 		ByteBuffer buffer = ByteBuffer.allocate(8192);
 		AsyncSupplier<Integer, IOException> unzip = gzip.readAsync(buffer);
 		Task.Cpu<Void, NoException> task =
-		new Task.Cpu<Void, NoException>("Transfer unzipped data to next content decoder", Task.PRIORITY_NORMAL) {
-			@Override
-			public Void run() {
-				if (unzip.hasError()) done.error(unzip.getError());
-				else if (unzip.isCancelled()) done.cancel(unzip.getCancelEvent());
-				else {
-					int nb = unzip.getResult().intValue();
-					if (nb <= 0)
-						next.endOfData().onDone(done);
-					else {
-						buffer.flip();
-						unzip(next.decode(buffer));
-					}
-				}
-				return null;
+		new Task.Cpu.FromRunnable("Transfer unzipped data to next content decoder", Task.PRIORITY_NORMAL, () -> {
+			int nb = unzip.getResult().intValue();
+			if (nb <= 0)
+				next.endOfData().onDone(done);
+			else {
+				buffer.flip();
+				unzip(next.decode(buffer));
 			}
-		};
+		});
 		if (previous == null)
-			unzip.thenStart(task, true);
+			unzip.thenStart(task, done);
 		else
-			previous.onDone(() -> unzip.thenStart(task, true));
+			previous.onDone(() -> unzip.thenStart(task, done));
 	}
 	
 }

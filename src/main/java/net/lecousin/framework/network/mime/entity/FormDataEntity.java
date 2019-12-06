@@ -7,6 +7,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.async.Async;
@@ -157,12 +158,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 		}
 		jp.start();
 		Async<IOException> result = new Async<>();
-		jp.onDone(() -> {
-			if (jp.hasError())
-				result.error(IO.error(jp.getError()));
-			else
-				result.unblock();
-		});
+		jp.onDone(result, IO::error);
 		return result;
 	}
 	
@@ -233,13 +229,7 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 	
 	private static void readField(String fieldName, IO.Readable content, Charset charset, AsyncSupplier<MimeMessage, IOException> result) {
 		AsyncSupplier<UnprotectedStringBuffer, IOException> read = IOUtil.readFullyAsString(content, charset, Task.PRIORITY_NORMAL);
-		read.onDone(() -> {
-			if (read.hasError()) {
-				result.error(read.getError());
-				return;
-			}
-			result.unblockSuccess(new PartField(fieldName, read.getResult().asString(), charset));
-		});
+		read.onDone(result, () -> new PartField(fieldName, read.getResult().asString(), charset));
 	}
 	
 	private static final String DECODE_ERROR_MESSAGE = "Error decoding value of form-data field ";
@@ -250,29 +240,18 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 	) {
 		ByteBuffer buf = ByteBuffer.allocate((int)encoded.getSizeSync());
 		AsyncSupplier<Integer, IOException> read = encoded.readFullyAsync(buf);
+		UnaryOperator<IOException> errorConverter = e -> new IOException(DECODE_ERROR_MESSAGE + fieldName, e);
 		read.onDone(() -> {
-			if (read.hasError()) {
-				result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, read.getError()));
-				return;
-			}
 			buf.flip();
 			IAsync<IOException> decode = decoder.decode(buf);
 			decode.onDone(() -> {
-				if (decode.hasError()) {
-					result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, decode.getError()));
-					return;
-				}
 				IAsync<IOException> end = decoder.endOfData();
 				end.onDone(() -> {
-					if (end.hasError()) {
-						result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, end.getError()));
-						return;
-					}
 					decoded.seekSync(SeekType.FROM_BEGINNING, 0);
 					readField(fieldName, decoded, charset, result);
-				});
-			});
-		});
+				}, result, errorConverter);
+			}, result, errorConverter);
+		}, result, errorConverter);
 	}
 	
 	private static void decodeFile(
@@ -281,43 +260,27 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 	) {
 		ByteBuffer buf = ByteBuffer.allocate(65536);
 		AsyncSupplier<Integer, IOException> read = encoded.readFullyAsync(buf);
+		UnaryOperator<IOException> errorConverter = e -> {
+			file.closeAsync();
+			return new IOException(DECODE_ERROR_MESSAGE + fieldName, e);
+		};
 		read.thenStart(new Task.Cpu.FromRunnable("Reading form-data file", Task.PRIORITY_NORMAL, () -> {
-			if (read.hasError()) {
-				result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, read.getError()));
-				file.closeAsync();
-				return;
-			}
 			buf.flip();
 			IAsync<IOException> decode = decoder.decode(buf);
 			decode.onDone(() -> {
-				if (decode.hasError()) {
-					result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, decode.getError()));
-					file.closeAsync();
-					return;
-				}
 				if (read.getResult().intValue() < 65536) {
 					IAsync<IOException> end = decoder.endOfData();
 					end.onDone(() -> {
-						if (end.hasError()) {
-							result.error(new IOException(DECODE_ERROR_MESSAGE + fieldName, end.getError()));
-							file.closeAsync();
-							return;
-						}
 						AsyncSupplier<Long, IOException> seek = file.seekAsync(SeekType.FROM_BEGINNING, 0);
 						seek.onDone(() -> {
-							if (seek.hasError()) {
-								result.error(seek.getError());
-								file.closeAsync();
-								return;
-							}
 							result.unblockSuccess(new PartFile(fieldName, filename, contentType, file));
-						});
-					});
+						}, result, errorConverter);
+					}, result, errorConverter);
 					return;
 				}
 				decodeFile(fieldName, filename, contentType, encoded, decoder, file, result);
-			});
-		}), true);
+			}, result, errorConverter);
+		}), result, errorConverter);
 	}
 	
 }
