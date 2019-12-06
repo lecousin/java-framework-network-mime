@@ -6,7 +6,6 @@ import java.nio.ByteBuffer;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.async.Async;
 import net.lecousin.framework.concurrent.async.AsyncSupplier;
-import net.lecousin.framework.concurrent.async.AsyncSupplier.Listener;
 import net.lecousin.framework.concurrent.async.CancelException;
 import net.lecousin.framework.concurrent.async.IAsync;
 import net.lecousin.framework.concurrent.util.production.simple.Consumer;
@@ -50,43 +49,32 @@ public class IdentityTransfer extends TransferReceiver {
 			return new AsyncSupplier<>(Boolean.TRUE, null);
 		AsyncSupplier<Boolean, IOException> result = new AsyncSupplier<>();
 		int l = buf.remaining();
+		int limit;
 		if (pos + l > size) {
 			int l2 = (int)(size - pos);
-			pos += l2;
-			eot = pos == size;
-			int limit = buf.limit();
+			limit = buf.limit();
 			buf.limit(limit - (l - l2));
-			IAsync<IOException> decode = decoder.decode(buf);
-			decode.onDone(() -> {
-				buf.limit(limit);
-				if (decode.isSuccessful()) {
-					if (!eot)
-						result.unblockSuccess(Boolean.FALSE);
-					else
-						decoder.endOfData().onDone(() -> result.unblockSuccess(Boolean.TRUE), result);
-				} else if (decode.hasError()) {
-					result.unblockError(IO.error(decode.getError()));
-				} else {
-					result.cancel(decode.getCancelEvent());
-				}
-			});
+			l = l2;
 		} else {
-			pos += l;
-			eot = pos == size;
-			IAsync<IOException> decode = decoder.decode(buf);
-			decode.onDone(() -> {
-				if (decode.isSuccessful()) {
-					if (!eot)
-						result.unblockSuccess(Boolean.FALSE);
-					else
-						decoder.endOfData().onDone(() -> result.unblockSuccess(Boolean.TRUE), result);
-				} else if (decode.hasError()) {
-					result.unblockError(IO.error(decode.getError()));
-				} else {
-					result.cancel(decode.getCancelEvent());
-				}
-			});
+			limit = -1;
 		}
+		pos += l;
+		eot = pos == size;
+		IAsync<IOException> decode = decoder.decode(buf);
+		decode.onDone(() -> {
+			if (limit != -1)
+				buf.limit(limit);
+			if (decode.isSuccessful()) {
+				if (!eot)
+					result.unblockSuccess(Boolean.FALSE);
+				else
+					decoder.endOfData().onDone(() -> result.unblockSuccess(Boolean.TRUE), result);
+			} else if (decode.hasError()) {
+				result.unblockError(IO.error(decode.getError()));
+			} else {
+				result.cancel(decode.getCancelEvent());
+			}
+		});
 		return result;
 	}
 	
@@ -98,44 +86,29 @@ public class IdentityTransfer extends TransferReceiver {
 			public Void run() {
 				Production<ByteBuffer> production = new Production<>(
 					new IOReaderAsProducer(data, bufferSize), maxBuffers,
-				new Consumer<ByteBuffer>() {
-					@Override
-					public AsyncSupplier<Void,IOException> consume(ByteBuffer product) {
-						return client.send(product).toAsyncSupplier();
-					}
-					
-					@Override
-					public AsyncSupplier<Void, IOException> endOfProduction() {
-						return new AsyncSupplier<>(null, null);
-					}
-					
-					@Override
-					public void error(Exception error) {
-						result.error(IO.error(error));
-					}
-					
-					@Override
-					public void cancel(CancelException event) {
-						result.cancel(event);
-					}
-				});
+					new Consumer<ByteBuffer>() {
+						@Override
+						public AsyncSupplier<Void,IOException> consume(ByteBuffer product) {
+							return client.send(product).toAsyncSupplier();
+						}
+						
+						@Override
+						public AsyncSupplier<Void, IOException> endOfProduction() {
+							return new AsyncSupplier<>(null, null);
+						}
+						
+						@Override
+						public void error(Exception error) {
+							result.error(IO.error(error));
+						}
+						
+						@Override
+						public void cancel(CancelException event) {
+							result.cancel(event);
+						}
+					});
 				production.start();
-				production.getSyncOnFinished().listen(new Listener<Void, Exception>() {
-					@Override
-					public void ready(Void r) {
-						result.unblock();
-					}
-					
-					@Override
-					public void error(Exception error) {
-						result.error(IO.error(error));
-					}
-					
-					@Override
-					public void cancelled(CancelException event) {
-						result.cancel(event);
-					}
-				});
+				production.getSyncOnFinished().onDone(result, IO::error);
 				return null;
 			}
 		};

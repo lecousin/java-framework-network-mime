@@ -11,8 +11,7 @@ import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.log.Logger;
 import net.lecousin.framework.network.mime.MimeMessage;
-import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
-import net.lecousin.framework.network.mime.header.ParameterizedHeaderValues;
+import net.lecousin.framework.network.mime.transfer.TransferEncodingFactory;
 
 /**
  * Instantiate a ContentDecoder based on the Content-Encoding or Content-Transfer-Encoding header.
@@ -90,38 +89,8 @@ public final class ContentDecoderFactory {
 	public static ContentDecoder createDecoder(ContentDecoder next, MimeMessage mime) {
 		LinkedList<String> encoding = new LinkedList<>();
 		
-		ParameterizedHeaderValues values;
-		try { values = mime.getFirstHeaderValue(MimeMessage.CONTENT_TRANSFER_ENCODING, ParameterizedHeaderValues.class); }
-		catch (Exception e) { values = null; }
-		if (values != null) {
-			for (ParameterizedHeaderValue value : values.getValues()) {
-				String e = value.getMainValue();
-				if (e == null) continue;
-				e = e.trim().toLowerCase();
-				if (e.isEmpty()) continue;
-				encoding.add(e);
-			}
-			if (!encoding.isEmpty()) {
-				String s = encoding.getLast();
-				if ("identity".equals(s))
-					encoding.removeLast();
-				else if ("chunked".equals(s)) {
-					encoding.removeLast();
-				}
-			}
-		}
-		
-		try { values = mime.getFirstHeaderValue(MimeMessage.CONTENT_ENCODING, ParameterizedHeaderValues.class); }
-		catch (Exception e) { values = null; }
-		if (values != null) {
-			for (ParameterizedHeaderValue value : values.getValues()) {
-				String e = value.getMainValue();
-				if (e == null) continue;
-				e = e.trim().toLowerCase();
-				if (e.isEmpty()) continue;
-				encoding.add(e);
-			}
-		}
+		TransferEncodingFactory.encodingAndTransferFromHeader(mime, MimeMessage.CONTENT_TRANSFER_ENCODING, encoding, null);
+		TransferEncodingFactory.addEncodingFromHeader(mime, MimeMessage.CONTENT_ENCODING, encoding);
 
 		for (String coding : encoding)
 			next = createDecoder(next, coding);

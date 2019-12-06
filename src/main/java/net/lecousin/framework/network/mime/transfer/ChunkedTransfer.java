@@ -8,7 +8,6 @@ import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.concurrent.Task;
 import net.lecousin.framework.concurrent.async.Async;
 import net.lecousin.framework.concurrent.async.AsyncSupplier;
-import net.lecousin.framework.concurrent.async.AsyncSupplier.Listener;
 import net.lecousin.framework.concurrent.async.CancelException;
 import net.lecousin.framework.concurrent.async.IAsync;
 import net.lecousin.framework.concurrent.async.JoinPoint;
@@ -286,30 +285,10 @@ public class ChunkedTransfer extends TransferReceiver {
 				result.cancel(event);
 			}
 		});
-		Task<Void,NoException> task = new Task.Cpu<Void, NoException>("Sending chunked body", Task.PRIORITY_NORMAL) {
-			@Override
-			public Void run() {
-				production.start();
-				production.getSyncOnFinished().listen(new Listener<Void, Exception>() {
-					@Override
-					public void ready(Void r) {
-						result.unblock();
-					}
-					
-					@Override
-					public void error(Exception error) {
-						result.error(IO.error(error));
-					}
-					
-					@Override
-					public void cancelled(CancelException event) {
-						result.cancel(event);
-					}
-				});
-				return null;
-			}
-		};
-		task.start();
+		new Task.Cpu.FromRunnable("Sending chunked body", Task.PRIORITY_NORMAL, () -> {
+			production.start();
+			production.getSyncOnFinished().onDone(result, IO::error);
+		}).start();
 		return result;
 	}
 	
