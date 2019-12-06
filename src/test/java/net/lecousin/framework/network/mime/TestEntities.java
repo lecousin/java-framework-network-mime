@@ -54,7 +54,6 @@ public class TestEntities extends LCCoreAbstractTest {
 		check(source);
 	}
 	
-	@SuppressWarnings("resource")
 	private static void check(FormUrlEncodedEntity source) throws Exception {
 		// generate
 		ByteBuffersIO io = generateBody(source);
@@ -85,7 +84,6 @@ public class TestEntities extends LCCoreAbstractTest {
 	
 	@Test
 	public void testParseFormUrlEncodedEntity() throws Exception {
-		@SuppressWarnings("resource")
 		MimeMessage mime = MimeUtil.parseMimeMessage(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("formurlencoded.raw"), "formurlencoded.raw", Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL), 4096)).blockResult(0);
 		FormUrlEncodedEntity entity = FormUrlEncodedEntity.from(mime, true).blockResult(0);
 		Assert.assertEquals("Cosby", entity.getParameter("home"));
@@ -102,7 +100,6 @@ public class TestEntities extends LCCoreAbstractTest {
 		testParseMultipart("multipart2.raw");
 	}
 	
-	@SuppressWarnings("resource")
 	private void testParseMultipart(String filename) throws Exception {
 		MultipartEntity entity = new MultipartEntity("---------------------------114772229410704779042051621609".getBytes(), "form-data");
 		IOFromInputStream body = new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL);
@@ -256,7 +253,6 @@ public class TestEntities extends LCCoreAbstractTest {
 	
 	@Test
 	public void testParseEML() throws Exception {
-		@SuppressWarnings("resource")
 		MimeMessage mime = MimeUtil.parseMimeMessage(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("html-attachment-encoded-filename.eml"), "html-attachment-encoded-filename.eml", Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL), 4096)).blockResult(0);
 		MultipartEntity eml = MultipartEntity.from(mime, true).blockResult(0);
 		Assert.assertEquals(2, eml.getParts().size());

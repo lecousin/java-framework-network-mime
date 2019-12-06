@@ -46,7 +46,7 @@ public abstract class AbstractStepDecoder implements ContentDecoder {
 		return decode;
 	}
 	
-	protected abstract ByteBuffer decodeStep(ByteBuffer data) throws Exception;
+	protected abstract ByteBuffer decodeStep(ByteBuffer data) throws IOException;
 	
 	@Override
 	public IAsync<IOException> endOfData() {

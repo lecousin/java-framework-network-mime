@@ -1,5 +1,6 @@
 package net.lecousin.framework.network.mime.transfer.encoding;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import net.lecousin.framework.io.encoding.Base64;
@@ -16,7 +17,7 @@ public class Base64Decoder extends AbstractStepDecoder {
 	private int inPos = 0;
 	
 	@Override
-	protected ByteBuffer decodeStep(ByteBuffer data) throws Exception {
+	protected ByteBuffer decodeStep(ByteBuffer data) throws IOException {
 		byte[] decoded = new byte[data.remaining() * 3 / 4 + 3];
 		int decodedPos = 0;
 		while (data.hasRemaining()) {

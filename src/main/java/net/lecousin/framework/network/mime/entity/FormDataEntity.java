@@ -272,9 +272,8 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 					IAsync<IOException> end = decoder.endOfData();
 					end.onDone(() -> {
 						AsyncSupplier<Long, IOException> seek = file.seekAsync(SeekType.FROM_BEGINNING, 0);
-						seek.onDone(() -> {
-							result.unblockSuccess(new PartFile(fieldName, filename, contentType, file));
-						}, result, errorConverter);
+						seek.onDone(() -> result.unblockSuccess(new PartFile(fieldName, filename, contentType, file)),
+							result, errorConverter);
 					}, result, errorConverter);
 					return;
 				}
