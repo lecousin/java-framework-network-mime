@@ -3,6 +3,8 @@ package net.lecousin.framework.network.mime.transfer;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.function.Supplier;
 
 import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.concurrent.Task;
@@ -18,9 +20,12 @@ import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.util.IOReaderAsProducer;
 import net.lecousin.framework.log.Logger;
 import net.lecousin.framework.network.TCPRemote;
+import net.lecousin.framework.network.mime.MimeHeader;
 import net.lecousin.framework.network.mime.MimeMessage;
 import net.lecousin.framework.network.mime.transfer.encoding.ContentDecoder;
 import net.lecousin.framework.util.StringUtil;
+import net.lecousin.framework.util.UnprotectedString;
+import net.lecousin.framework.util.UnprotectedStringBuffer;
 
 /**
  * Chunked transfer (Transfer-Encoding: chunked).
@@ -31,11 +36,10 @@ import net.lecousin.framework.util.StringUtil;
  */
 public class ChunkedTransfer extends TransferReceiver {
 
-	// TODO support for trailer headers (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Trailer)
-
 	public static final String TRANSFER_NAME = "chunked";
 	
-	private static final byte[] FINAL_CHUNK = new byte[] { '0', '\r', '\n', '\r', '\n' };
+	private static final byte[] FINAL_CHUNK = new byte[] { '0', '\r', '\n' };
+	private static final byte[] CRLF = new byte[] { '\r', '\n' };
 	
 	/** Constructor. */
 	public ChunkedTransfer(MimeMessage mime, ContentDecoder decoder) {
@@ -48,12 +52,12 @@ public class ChunkedTransfer extends TransferReceiver {
 	private long chunkSize = -1;
 	private long chunkUsed = 0;
 	private int chunkSizeChars = 0;
+	private UnprotectedString trailerLine = new UnprotectedString(64);
 	
 	@Override
 	public AsyncSupplier<Boolean, IOException> consume(ByteBuffer buf) {
 		AsyncSupplier<Boolean, IOException> result = new AsyncSupplier<>();
-		ChunkConsumer task = new ChunkConsumer(buf, result);
-		task.start();
+		new ChunkConsumer(buf, result).start();
 		return result;
 	}
 
@@ -90,6 +94,11 @@ public class ChunkedTransfer extends TransferReceiver {
 					onDone.unblockError(new IOException("Missing chunk size"));
 					return null;
 				}
+				if (chunkSize == 0) {
+					// final chunk of 0
+					consumeTrailer();
+					return null;
+				}
 				consumeChunk();
 				break;
 			}
@@ -108,11 +117,6 @@ public class ChunkedTransfer extends TransferReceiver {
 				needSize = false;
 				chunkSizeDone = false;
 				chunkExtension = false;
-				if (chunkSize == 0) {
-					// final chunk of 0
-					decoder.endOfData().onDone(() -> onDone.unblockSuccess(Boolean.TRUE), onDone);
-					return false;
-				}
 				return true;
 			}
 			if (chunkSize < 0 && (i == '\r' || i == '\n'))
@@ -131,11 +135,6 @@ public class ChunkedTransfer extends TransferReceiver {
 				needSize = false;
 				chunkSizeDone = false;
 				chunkExtension = false;
-				if (chunkSize == 0) {
-					// final chunk of 0
-					decoder.endOfData().onDone(() -> onDone.unblockSuccess(Boolean.TRUE), onDone);
-					return false;
-				}
 				return true;
 			}
 			if (chunkExtension) return true;
@@ -220,10 +219,44 @@ public class ChunkedTransfer extends TransferReceiver {
 				});
 			}
 		}
+		
+		private void consumeTrailer() {
+			do {
+				char c = (char)(buf.get() & 0xFF);
+				if (c == '\n') {
+					// end of line
+					trailerLine.trim();
+					if (trailerLine.length() == 0) {
+						// empty line = end of transfer
+						decoder.endOfData().onDone(() -> onDone.unblockSuccess(Boolean.TRUE), onDone);
+						return;
+					}
+					// this is a trailer
+					int i = trailerLine.indexOf(':');
+					String name;
+					String value;
+					if (i < 0) {
+						name = trailerLine.toString();
+						value = "";
+					} else {
+						name = trailerLine.substring(0, i).trim().toString();
+						value = trailerLine.substring(i + 1).trim().toString();
+					}
+					mime.addHeaderRaw(name, value);
+					if (mime.getLogger().trace())
+						mime.getLogger().trace("Trailer header received: " + name + ": " + value);
+					trailerLine = new UnprotectedString(64);
+				} else {
+					trailerLine.append(c);
+				}
+			} while (buf.hasRemaining());
+		}
 	}
 	
 	/** Send data from the given Readable to the client using chunked transfer. */
-	public static Async<IOException> send(TCPRemote client, IO.Readable data, int bufferSize, int maxBuffers) {
+	public static Async<IOException> send(
+		TCPRemote client, IO.Readable data, int bufferSize, int maxBuffers, Supplier<List<MimeHeader>> trailerSupplier
+	) {
 		Async<IOException> result = new Async<>();
 		Logger logger = LCCore.getApplication().getLoggerFactory().getLogger(MimeMessage.class);
 		Production<ByteBuffer> production = new Production<>(
@@ -240,16 +273,13 @@ public class ChunkedTransfer extends TransferReceiver {
 				ByteBuffer header = ByteBuffer.wrap((Integer.toHexString(size) + "\r\n").getBytes(StandardCharsets.US_ASCII));
 				IAsync<IOException> sendHeader = client.send(header);
 				IAsync<IOException> sendProduct = client.send(product);
-				IAsync<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK, 1, 2));
+				IAsync<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(CRLF));
 				AsyncSupplier<Void,IOException> chunk = new AsyncSupplier<>();
 				sendEndOfChunk.onDone(() -> {
-					if (sendHeader.hasError()) chunk.error(sendHeader.getError());
-					else if (sendHeader.isCancelled()) chunk.cancel(sendHeader.getCancelEvent());
-					else if (sendProduct.hasError()) chunk.error(sendProduct.getError());
-					else if (sendProduct.isCancelled()) chunk.cancel(sendProduct.getCancelEvent());
-					else if (sendEndOfChunk.hasError()) chunk.error(sendEndOfChunk.getError());
-					else if (sendEndOfChunk.isCancelled()) chunk.cancel(sendEndOfChunk.getCancelEvent());
-					else chunk.unblockSuccess(null);
+					if (!sendHeader.forwardIfNotSuccessful(chunk) &&
+						!sendProduct.forwardIfNotSuccessful(chunk) &&
+						!sendEndOfChunk.forwardIfNotSuccessful(chunk))
+						chunk.unblockSuccess(null);
 				});
 				return chunk;
 			}
@@ -259,18 +289,29 @@ public class ChunkedTransfer extends TransferReceiver {
 				if (logger.trace())
 					logger.trace("ChunkedTransfer.send from Readable: send final chunk");
 				IAsync<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
-				AsyncSupplier<Void, IOException> end = new AsyncSupplier<>();
-				finalChunk.onDone(() -> {
-					if (finalChunk.hasError()) {
-						end.error(finalChunk.getError());
-						result.error(finalChunk.getError());
-					} else if (finalChunk.isCancelled()) {
-						end.cancel(finalChunk.getCancelEvent());
-						result.cancel(finalChunk.getCancelEvent());
+				IAsync<IOException> trailer;
+				if (trailerSupplier != null) {
+					List<MimeHeader> trailers = trailerSupplier.get();
+					if (trailers != null) {
+						UnprotectedStringBuffer trailerString = new UnprotectedStringBuffer();
+						for (MimeHeader header : trailers)
+							header.appendTo(trailerString);
+						trailer = client.send(ByteBuffer.wrap(trailerString.toUsAsciiBytes()));
 					} else {
-						end.unblockSuccess(null);
-						result.unblock();
+						trailer = new Async<>(true);
 					}
+				} else {
+					trailer = new Async<>(true);
+				}
+				IAsync<IOException> sendEndOfTransfer = client.send(ByteBuffer.wrap(CRLF));
+				AsyncSupplier<Void, IOException> end = new AsyncSupplier<>();
+				sendEndOfTransfer.onDone(() -> {
+					if (!finalChunk.forwardIfNotSuccessful(end) &&
+						!trailer.forwardIfNotSuccessful(end) &&
+						!sendEndOfTransfer.forwardIfNotSuccessful(end))
+						end.unblockSuccess(null);
+					if (!end.forwardIfNotSuccessful(result))
+						result.unblock();
 				});
 				return end;
 			}
@@ -295,17 +336,17 @@ public class ChunkedTransfer extends TransferReceiver {
 	/** Send the given buffered readable by chunk. It uses the readNextBufferAsync method to get a new
 	 * buffer of data, and send a chunk with it to the client.
 	 */
-	public static Async<IOException> send(TCPRemote client, IO.Readable.Buffered data) {
+	public static Async<IOException> send(TCPRemote client, IO.Readable.Buffered data, Supplier<List<MimeHeader>> trailerSupplier) {
 		Async<IOException> result = new Async<>();
 		byte[] chunkHeader = new byte[10];
 		chunkHeader[8] = (byte)'\r';
 		chunkHeader[9] = (byte)'\n';
-		sendNextBuffer(client, data, result, chunkHeader);
+		sendNextBuffer(client, data, result, chunkHeader, trailerSupplier);
 		return result;
 	}
 	
 	private static void sendNextBuffer(
-		TCPRemote client, IO.Readable.Buffered data, Async<IOException> result, byte[] chunkHeader
+		TCPRemote client, IO.Readable.Buffered data, Async<IOException> result, byte[] chunkHeader, Supplier<List<MimeHeader>> trailerSupplier
 	) {
 		Logger logger = LCCore.getApplication().getLoggerFactory().getLogger(MimeMessage.class);
 		data.readNextBufferAsync().onDone(
@@ -315,7 +356,27 @@ public class ChunkedTransfer extends TransferReceiver {
 					if (logger.trace())
 						logger.trace("ChunkedTransfer.send from Buffered: Send final chunk to " + client);
 					IAsync<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
-					finalChunk.onDone(result);
+					IAsync<IOException> trailer;
+					if (trailerSupplier != null) {
+						List<MimeHeader> trailers = trailerSupplier.get();
+						if (trailers != null) {
+							UnprotectedStringBuffer trailerString = new UnprotectedStringBuffer();
+							for (MimeHeader header : trailers)
+								header.appendTo(trailerString);
+							trailer = client.send(ByteBuffer.wrap(trailerString.toUsAsciiBytes()));
+						} else {
+							trailer = new Async<>(true);
+						}
+					} else {
+						trailer = new Async<>(true);
+					}
+					IAsync<IOException> sendEndOfTransfer = client.send(ByteBuffer.wrap(CRLF));
+					sendEndOfTransfer.onDone(() -> {
+						if (!finalChunk.forwardIfNotSuccessful(result) &&
+							!trailer.forwardIfNotSuccessful(result) &&
+							!sendEndOfTransfer.forwardIfNotSuccessful(result))
+							result.unblock();
+					});
 					return;
 				}
 				new Task.Cpu<Void, NoException>("Send chunk of data to TCP Client", data.getPriority()) {
@@ -335,9 +396,9 @@ public class ChunkedTransfer extends TransferReceiver {
 						chunkHeader[7] = (byte)StringUtil.encodeHexaDigit((size & 0x0000000F));
 						IAsync<IOException> sendHeader = client.send(ByteBuffer.wrap(chunkHeader));
 						IAsync<IOException> sendProduct = client.send(buffer);
-						IAsync<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK, 1, 2));
+						IAsync<IOException> sendEndOfChunk = client.send(ByteBuffer.wrap(CRLF));
 						JoinPoint.fromSimilarError(sendHeader, sendProduct, sendEndOfChunk)
-							.onDone(() -> sendNextBuffer(client, data, result, chunkHeader), result);
+							.onDone(() -> sendNextBuffer(client, data, result, chunkHeader, trailerSupplier), result);
 						return null;
 					}
 				}.start();

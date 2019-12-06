@@ -40,6 +40,7 @@ public final class TransferEncodingFactory {
 	}
 	
 	/** Add encoding from the given MIME header, remove and return any value which is a transfer. */
+	@SuppressWarnings("squid:S1319") // we want LinkedList
 	public static String encodingAndTransferFromHeader(MimeMessage mime, String headerName, LinkedList<String> encoding, String defaultValue) {
 		if (!addEncodingFromHeader(mime, headerName, encoding))
 			return defaultValue;
@@ -54,6 +55,7 @@ public final class TransferEncodingFactory {
 	}
 	
 	/** Add encoding from the given MIME header. */
+	@SuppressWarnings("squid:S1319") // we want LinkedList
 	public static boolean addEncodingFromHeader(MimeMessage mime, String headerName, LinkedList<String> encoding) {
 		ParameterizedHeaderValues values;
 		try { values = mime.getFirstHeaderValue(headerName, ParameterizedHeaderValues.class); }

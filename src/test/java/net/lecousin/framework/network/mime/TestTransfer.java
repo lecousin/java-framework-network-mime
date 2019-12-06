@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.function.Consumer;
 import java.util.zip.Deflater;
 
@@ -19,6 +20,7 @@ import net.lecousin.framework.io.buffering.ByteBuffersIO;
 import net.lecousin.framework.io.encoding.Base64;
 import net.lecousin.framework.io.encoding.QuotedPrintable;
 import net.lecousin.framework.log.Logger.Level;
+import net.lecousin.framework.mutable.MutableLong;
 import net.lecousin.framework.network.NetworkManager;
 import net.lecousin.framework.network.client.TCPClient;
 import net.lecousin.framework.network.mime.transfer.TransferEncodingFactory;
@@ -53,7 +55,6 @@ public class TestTransfer extends AbstractNetworkTest {
 		LCCore.getApplication().getLoggerFactory().getLogger("network-data").setLevel(Level.TRACE);
 	}
 	
-	@SuppressWarnings("resource")
 	@Test
 	public void testIdentityTransferBuffered() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
@@ -66,7 +67,7 @@ public class TestTransfer extends AbstractNetworkTest {
 			mime.setBodyToSend(new ByteArrayIO(data, "test"));
 			TCPClient client = new TCPClient();
 			client.connect(new InetSocketAddress("localhost", 9999), 10000).blockThrow(0);
-			mime.send(client).blockThrow(0);
+			mime.send(client, null).blockThrow(0);
 			MimeMessage answer = new MimeMessage();
 			answer.readHeader(client, 10000).blockThrow(0);
 			Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
@@ -100,7 +101,6 @@ public class TestTransfer extends AbstractNetworkTest {
 		}
 	}
 
-	@SuppressWarnings("resource")
 	@Test
 	public void testIdentityTransferFromFile() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
@@ -120,7 +120,7 @@ public class TestTransfer extends AbstractNetworkTest {
 			mime.setBodyToSend(in);
 			TCPClient client = new TCPClient();
 			client.connect(new InetSocketAddress("localhost", 9999), 10000).blockThrow(0);
-			mime.send(client).blockThrow(0);
+			mime.send(client, null).blockThrow(0);
 			MimeMessage answer = new MimeMessage();
 			answer.readHeader(client, 10000).blockThrow(0);
 			Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
@@ -157,7 +157,6 @@ public class TestTransfer extends AbstractNetworkTest {
 	}
 	
 	
-	@SuppressWarnings("resource")
 	@Test
 	public void testChunkedTransferBuffered() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
@@ -171,7 +170,7 @@ public class TestTransfer extends AbstractNetworkTest {
 			mime.setBodyToSend(new ByteArrayIO(data, "test"));
 			TCPClient client = new TCPClient();
 			client.connect(new InetSocketAddress("localhost", 9999), 10000).blockThrow(0);
-			mime.send(client).blockThrow(0);
+			mime.send(client, null).blockThrow(0);
 			MimeMessage answer = new MimeMessage();
 			answer.readHeader(client, 10000).blockThrow(0);
 			Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
@@ -199,6 +198,62 @@ public class TestTransfer extends AbstractNetworkTest {
 			byte[] buf = new byte[data.length];
 			Assert.assertEquals(data.length, body.readFullySync(ByteBuffer.wrap(buf)));
 			Assert.assertArrayEquals(data, buf);
+			Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
+			server.close();
+			client.close();
+		} finally {
+			NetworkManager.get().getLogger().setLevel(Level.TRACE);
+		}
+	}
+	
+	@Test
+	public void testChunkedTransferBufferedWithTrailer() throws Exception {
+		NetworkManager.get().getLogger().setLevel(Level.INFO);
+		try {
+			TCPServer server = new TCPServer();
+			server.setProtocol(new TestTransferProtocol());
+			server.bind(new InetSocketAddress("localhost", 9999), 0).blockThrow(0);
+			MimeMessage mime = new MimeMessage();
+			mime.setHeaderRaw("X-Test", "Hello World");
+			mime.setHeaderRaw(MimeMessage.TRANSFER_ENCODING, "chunked");
+			mime.setBodyToSend(new ByteArrayIO(data, "test"));
+			TCPClient client = new TCPClient();
+			client.connect(new InetSocketAddress("localhost", 9999), 10000).blockThrow(0);
+			long start = System.currentTimeMillis();
+			MutableLong time = new MutableLong(0);
+			mime.send(client, () -> {
+				time.set(System.currentTimeMillis() - start);
+				return Arrays.asList(new MimeHeader("X-Time", Long.toString(time.get())));
+			}).blockThrow(0);
+			MimeMessage answer = new MimeMessage();
+			answer.readHeader(client, 10000).blockThrow(0);
+			Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
+			Assert.assertEquals("chunked", answer.getFirstHeaderRawValue(MimeMessage.TRANSFER_ENCODING));
+			ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
+			answer.setBodyReceived(body);
+			TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
+			Async<IOException> sp = new Async<>();
+			client.getReceiver().readAvailableBytes(16384, 10000).onDone(new Consumer<ByteBuffer>() {
+				@Override
+				public void accept(ByteBuffer buf) {
+					System.out.println("Client received body data from server: " + buf.remaining());
+					Consumer<ByteBuffer> that = this;
+					transfer.consume(buf).onDone((end) -> {
+						if (end.booleanValue())
+							sp.unblock();
+						else
+							client.getReceiver().readAvailableBytes(16384, 10000).onDone(that, sp);
+					}, sp);
+				}
+			}, sp);
+			sp.blockThrow(0);
+			Assert.assertEquals(data.length, body.getSizeSync());
+			body.seekSync(SeekType.FROM_BEGINNING, 0);
+			byte[] buf = new byte[data.length];
+			Assert.assertEquals(data.length, body.readFullySync(ByteBuffer.wrap(buf)));
+			Assert.assertArrayEquals(data, buf);
+			Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
+			Assert.assertEquals(Long.toString(time.get()), answer.getFirstHeaderRawValue("X-Time"));
 			server.close();
 			client.close();
 		} finally {
@@ -206,7 +261,6 @@ public class TestTransfer extends AbstractNetworkTest {
 		}
 	}
 
-	@SuppressWarnings("resource")
 	@Test
 	public void testChunkedTransferFromFile() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
@@ -227,7 +281,7 @@ public class TestTransfer extends AbstractNetworkTest {
 			mime.setBodyToSend(in);
 			TCPClient client = new TCPClient();
 			client.connect(new InetSocketAddress("localhost", 9999), 10000).blockThrow(0);
-			mime.send(client).blockThrow(0);
+			mime.send(client, null).blockThrow(0);
 			MimeMessage answer = new MimeMessage();
 			answer.readHeader(client, 10000).blockThrow(0);
 			Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
@@ -255,6 +309,71 @@ public class TestTransfer extends AbstractNetworkTest {
 			byte[] buf = new byte[data.length];
 			Assert.assertEquals(data.length, body.readFullySync(ByteBuffer.wrap(buf)));
 			Assert.assertArrayEquals(data, buf);
+			Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
+			server.close();
+			client.close();
+			in.close();
+			file.delete();
+		} finally {
+			NetworkManager.get().getLogger().setLevel(Level.TRACE);
+		}
+	}
+
+	@Test
+	public void testChunkedTransferFromFileWithTrailer() throws Exception {
+		NetworkManager.get().getLogger().setLevel(Level.INFO);
+		try {
+			File file = File.createTempFile("test", "identitytransfer");
+			FileIO.WriteOnly out = new FileIO.WriteOnly(file, Task.PRIORITY_NORMAL);
+			out.writeSync(ByteBuffer.wrap(data));
+			out.close();
+			file.deleteOnExit();
+			FileIO.ReadOnly in = new FileIO.ReadOnly(file, Task.PRIORITY_NORMAL);
+			
+			TCPServer server = new TCPServer();
+			server.setProtocol(new TestTransferProtocol());
+			server.bind(new InetSocketAddress("localhost", 9999), 0).blockThrow(0);
+			MimeMessage mime = new MimeMessage();
+			mime.setHeaderRaw("X-Test", "Hello World");
+			mime.setHeaderRaw(MimeMessage.TRANSFER_ENCODING, "chunked");
+			mime.setBodyToSend(in);
+			TCPClient client = new TCPClient();
+			client.connect(new InetSocketAddress("localhost", 9999), 10000).blockThrow(0);
+			long start = System.currentTimeMillis();
+			MutableLong time = new MutableLong(0);
+			mime.send(client, () -> {
+				time.set(System.currentTimeMillis() - start);
+				return Arrays.asList(new MimeHeader("X-Time", Long.toString(time.get())));
+			}).blockThrow(0);
+			MimeMessage answer = new MimeMessage();
+			answer.readHeader(client, 10000).blockThrow(0);
+			Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
+			Assert.assertEquals("chunked", answer.getFirstHeaderRawValue(MimeMessage.TRANSFER_ENCODING));
+			ByteBuffersIO body = new ByteBuffersIO(false, "test", Task.PRIORITY_NORMAL);
+			answer.setBodyReceived(body);
+			TransferReceiver transfer = TransferEncodingFactory.create(answer, body);
+			Async<IOException> sp = new Async<>();
+			client.getReceiver().readAvailableBytes(16384, 10000).onDone(new Consumer<ByteBuffer>() {
+				@Override
+				public void accept(ByteBuffer buf) {
+					System.out.println("Client received body data from server: " + buf.remaining());
+					Consumer<ByteBuffer> that = this;
+					transfer.consume(buf).onDone((end) -> {
+						if (end.booleanValue())
+							sp.unblock();
+						else
+							client.getReceiver().readAvailableBytes(16384, 10000).onDone(that, sp);
+					}, sp);
+				}
+			}, sp);
+			sp.blockThrow(0);
+			Assert.assertEquals(data.length, body.getSizeSync());
+			body.seekSync(SeekType.FROM_BEGINNING, 0);
+			byte[] buf = new byte[data.length];
+			Assert.assertEquals(data.length, body.readFullySync(ByteBuffer.wrap(buf)));
+			Assert.assertArrayEquals(data, buf);
+			Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));
+			Assert.assertEquals(Long.toString(time.get()), answer.getFirstHeaderRawValue("X-Time"));
 			server.close();
 			client.close();
 			in.close();
@@ -281,7 +400,6 @@ public class TestTransfer extends AbstractNetworkTest {
 		}
 	}
 
-	@SuppressWarnings("resource")
 	@Test
 	public void testBase64() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
@@ -296,7 +414,6 @@ public class TestTransfer extends AbstractNetworkTest {
 		}
 	}
 	
-	@SuppressWarnings("resource")
 	@Test
 	public void testQuotedPrintable() throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
@@ -349,7 +466,6 @@ public class TestTransfer extends AbstractNetworkTest {
 		}
 	}
 	
-	@SuppressWarnings("resource")
 	private static void testEncoding(IO.Readable encoded, String encoding) throws Exception {
 		NetworkManager.get().getLogger().setLevel(Level.INFO);
 		try {
@@ -361,7 +477,7 @@ public class TestTransfer extends AbstractNetworkTest {
 			mime.setBodyToSend(encoded);
 			TCPClient client = new TCPClient();
 			client.connect(new InetSocketAddress("localhost", 9999), 10000).blockThrow(0);
-			mime.send(client).blockThrow(0);
+			mime.send(client, null).blockThrow(0);
 			MimeMessage answer = new MimeMessage();
 			answer.readHeader(client, 10000).blockThrow(0);
 			//Assert.assertEquals(encoding, answer.getHeaderSingleValue(MIME.CONTENT_ENCODING));
@@ -408,7 +524,7 @@ public class TestTransfer extends AbstractNetworkTest {
 		mime.setHeaderRaw("X-Test", "Hello World");
 		TCPClient client = new TCPClient();
 		client.connect(new InetSocketAddress("localhost", 9999), 10000).blockThrow(0);
-		mime.send(client).blockThrow(0);
+		mime.send(client, null).blockThrow(0);
 		MimeMessage answer = new MimeMessage();
 		answer.readHeader(client, 10000).blockThrow(0);
 		Assert.assertEquals("Hello World", answer.getFirstHeaderRawValue("X-Test"));

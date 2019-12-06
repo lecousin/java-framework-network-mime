@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.function.Supplier;
 
 import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.collections.LinkedArrayList;
@@ -306,13 +307,20 @@ public class MimeMessage {
 	// --- Send ---
 	
 	/** Send this MIME to the given TCP connection. */
-	public IAsync<IOException> send(TCPRemote remote) {
+	public IAsync<IOException> send(TCPRemote remote, Supplier<List<MimeHeader>> trailerSupplier) {
 		IO.Readable body = getBodyToSend();
 		
 		if (body == null) {
 			if (logger.debug())
 				logger.debug("Sending headers without body to " + remote);
 			setContentLength(0);
+			if (trailerSupplier != null) {
+				List<MimeHeader> trailers = trailerSupplier.get();
+				if (trailers != null)
+					for (MimeHeader header : trailers)
+						addHeader(header);
+			}
+			removeHeaders("Trailer");
 			UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
 			appendHeadersTo(s);
 			s.append(CRLF);
@@ -320,28 +328,12 @@ public class MimeMessage {
 			return remote.send(ByteBuffer.wrap(headersBuffer));
 		}
 		
-		ParameterizedHeaderValues transferEncoding;
-		try { transferEncoding = getFirstHeaderValue(TRANSFER_ENCODING, ParameterizedHeaderValues.class); }
-		catch (Exception e) { transferEncoding = null; }
-		if ((body instanceof IO.KnownSize) && (transferEncoding == null || !transferEncoding.hasMainValue("chunked"))) {
-			Async<IOException> sp = new Async<>();
-			((IO.KnownSize)body).getSizeAsync().thenDoOrStart(size -> {
-				if (logger.debug())
-					logger.debug("Sending headers with body of " + size.longValue() + " to " + remote);
-				setContentLength(size.longValue());
-				UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
-				appendHeadersTo(s);
-				s.append(CRLF);
-				byte[] headersBuffer = s.toUsAsciiBytes();
-				IAsync<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headersBuffer));
-				sendHeaders.onDone(() -> {
-					if (body instanceof IO.Readable.Buffered)
-						IdentityTransfer.send(remote, (IO.Readable.Buffered)body).onDone(sp);
-					else
-						IdentityTransfer.send(remote, body, 65536, 3).onDone(sp);
-				}, sp);
-			}, "Send MIME to " + remote, body.getPriority(), sp);
-			return sp;
+		if (trailerSupplier == null) {
+			ParameterizedHeaderValues transferEncoding;
+			try { transferEncoding = getFirstHeaderValue(TRANSFER_ENCODING, ParameterizedHeaderValues.class); }
+			catch (Exception e) { transferEncoding = null; }
+			if ((body instanceof IO.KnownSize) && (transferEncoding == null || !transferEncoding.hasMainValue("chunked")))
+				return sendIdentity(remote, body);
 		}
 		if (logger.debug())
 			logger.debug("Sending headers with chunked body to " + remote);
@@ -355,10 +347,31 @@ public class MimeMessage {
 		Async<IOException> sp = new Async<>();
 		sendHeaders.onDone(() -> {
 			if (body instanceof IO.Readable.Buffered)
-				ChunkedTransfer.send(remote, (IO.Readable.Buffered)body).onDone(sp);
+				ChunkedTransfer.send(remote, (IO.Readable.Buffered)body, trailerSupplier).onDone(sp);
 			else
-				ChunkedTransfer.send(remote, body, 65536, 3).onDone(sp);
+				ChunkedTransfer.send(remote, body, 65536, 3, trailerSupplier).onDone(sp);
 		}, sp);
+		return sp;
+	}
+	
+	private IAsync<IOException> sendIdentity(TCPRemote remote, IO.Readable body) {
+		Async<IOException> sp = new Async<>();
+		((IO.KnownSize)body).getSizeAsync().thenDoOrStart(size -> {
+			if (logger.debug())
+				logger.debug("Sending headers with body of " + size.longValue() + " to " + remote);
+			setContentLength(size.longValue());
+			UnprotectedStringBuffer s = new UnprotectedStringBuffer(new UnprotectedString(512));
+			appendHeadersTo(s);
+			s.append(CRLF);
+			byte[] headersBuffer = s.toUsAsciiBytes();
+			IAsync<IOException> sendHeaders = remote.send(ByteBuffer.wrap(headersBuffer));
+			sendHeaders.onDone(() -> {
+				if (body instanceof IO.Readable.Buffered)
+					IdentityTransfer.send(remote, (IO.Readable.Buffered)body).onDone(sp);
+				else
+					IdentityTransfer.send(remote, body, 65536, 3).onDone(sp);
+			}, sp);
+		}, "Send MIME to " + remote, body.getPriority(), sp);
 		return sp;
 	}
 }

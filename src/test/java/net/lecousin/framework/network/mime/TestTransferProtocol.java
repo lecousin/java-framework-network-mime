@@ -26,7 +26,6 @@ public class TestTransferProtocol implements ServerProtocol {
 		return 8192;
 	}
 
-	@SuppressWarnings("resource")
 	@Override
 	public void dataReceivedFromClient(TCPServerClient client, ByteBuffer data, Runnable onbufferavailable) {
 		LCCore.getApplication().getDefaultLogger().info("Test data received from client: " + data.remaining());
@@ -141,8 +140,11 @@ public class TestTransferProtocol implements ServerProtocol {
 		s = mime.getFirstHeaderRawValue("X-Test");
 		if (s != null)
 			answer.setHeaderRaw("X-Test", s);
+		s = mime.getFirstHeaderRawValue("X-Time");
+		if (s != null)
+			answer.setHeaderRaw("X-Time", s);
 		answer.setBodyToSend(body);
-		answer.send(client).onDone(() -> { client.close(); });
+		answer.send(client, null).onDone(() -> { client.close(); });
 	}
 
 	@Override

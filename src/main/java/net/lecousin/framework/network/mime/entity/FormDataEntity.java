@@ -1,7 +1,6 @@
 package net.lecousin.framework.network.mime.entity;
 
 import java.io.Closeable;
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
@@ -19,6 +18,7 @@ import net.lecousin.framework.io.FileIO;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.IOUtil;
+import net.lecousin.framework.io.TemporaryFiles;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
 import net.lecousin.framework.io.buffering.IOInMemoryOrFile;
@@ -212,18 +212,19 @@ public class FormDataEntity extends MultipartEntity implements Closeable, AsyncC
 				return result;
 			}
 			// considered as a file
-			// TODO use TemporaryFiles.createFileAsync
-			File tmp = File.createTempFile("formData", "file");
-			tmp.deleteOnExit();
-			FileIO.ReadWrite io = new FileIO.ReadWrite(tmp, Task.PRIORITY_NORMAL);
-			ContentDecoder decoder = ContentDecoderFactory.createDecoder(io, new MimeMessage(headers));
-			if (decoder instanceof IdentityDecoder) {
-				io.closeAsync().onDone(() -> new RemoveFileTask(tmp, Task.PRIORITY_LOW).start());
-				return new AsyncSupplier<>(new PartFile(fieldName, filename, type, body), null);
-			}
+			AsyncSupplier<FileIO.ReadWrite, IOException> tmp = TemporaryFiles.get().createAndOpenFileAsync("formData", "file");
 			AsyncSupplier<MimeMessage, IOException> result = new AsyncSupplier<>();
-			decodeFile(fieldName, filename, type, body, decoder, io, result);
-			io.addCloseListener(() -> new RemoveFileTask(tmp, Task.PRIORITY_LOW).start());
+			ParameterizedHeaderValue typ = type;
+			tmp.thenDoOrStart(io -> {
+				ContentDecoder decoder = ContentDecoderFactory.createDecoder(io, new MimeMessage(headers));
+				if (decoder instanceof IdentityDecoder) {
+					io.closeAsync().onDone(() -> new RemoveFileTask(io.getFile(), Task.PRIORITY_LOW).start());
+					result.unblockSuccess(new PartFile(fieldName, filename, typ, body));
+				} else {
+					decodeFile(fieldName, filename, typ, body, decoder, io, result);
+					io.addCloseListener(() -> new RemoveFileTask(io.getFile(), Task.PRIORITY_LOW).start());
+				}
+			}, "Decoding form-data file", Task.PRIORITY_NORMAL, result);
 			return result;
 		} catch (Exception e) {
 			return new AsyncSupplier<>(null, IO.error(e));
