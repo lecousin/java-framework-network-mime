@@ -288,31 +288,9 @@ public class ChunkedTransfer extends TransferReceiver {
 			public AsyncSupplier<Void, IOException> endOfProduction() {
 				if (logger.trace())
 					logger.trace("ChunkedTransfer.send from Readable: send final chunk");
-				IAsync<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
-				IAsync<IOException> trailer;
-				if (trailerSupplier != null) {
-					List<MimeHeader> trailers = trailerSupplier.get();
-					if (trailers != null) {
-						UnprotectedStringBuffer trailerString = new UnprotectedStringBuffer();
-						for (MimeHeader header : trailers)
-							header.appendTo(trailerString);
-						trailer = client.send(ByteBuffer.wrap(trailerString.toUsAsciiBytes()));
-					} else {
-						trailer = new Async<>(true);
-					}
-				} else {
-					trailer = new Async<>(true);
-				}
-				IAsync<IOException> sendEndOfTransfer = client.send(ByteBuffer.wrap(CRLF));
+				sendEndOfTransfer(client, trailerSupplier, result);
 				AsyncSupplier<Void, IOException> end = new AsyncSupplier<>();
-				sendEndOfTransfer.onDone(() -> {
-					if (!finalChunk.forwardIfNotSuccessful(end) &&
-						!trailer.forwardIfNotSuccessful(end) &&
-						!sendEndOfTransfer.forwardIfNotSuccessful(end))
-						end.unblockSuccess(null);
-					if (!end.forwardIfNotSuccessful(result))
-						result.unblock();
-				});
+				result.onDone(() -> end.unblockSuccess(null), end);
 				return end;
 			}
 			
@@ -355,28 +333,7 @@ public class ChunkedTransfer extends TransferReceiver {
 					// send final chunk
 					if (logger.trace())
 						logger.trace("ChunkedTransfer.send from Buffered: Send final chunk to " + client);
-					IAsync<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
-					IAsync<IOException> trailer;
-					if (trailerSupplier != null) {
-						List<MimeHeader> trailers = trailerSupplier.get();
-						if (trailers != null) {
-							UnprotectedStringBuffer trailerString = new UnprotectedStringBuffer();
-							for (MimeHeader header : trailers)
-								header.appendTo(trailerString);
-							trailer = client.send(ByteBuffer.wrap(trailerString.toUsAsciiBytes()));
-						} else {
-							trailer = new Async<>(true);
-						}
-					} else {
-						trailer = new Async<>(true);
-					}
-					IAsync<IOException> sendEndOfTransfer = client.send(ByteBuffer.wrap(CRLF));
-					sendEndOfTransfer.onDone(() -> {
-						if (!finalChunk.forwardIfNotSuccessful(result) &&
-							!trailer.forwardIfNotSuccessful(result) &&
-							!sendEndOfTransfer.forwardIfNotSuccessful(result))
-							result.unblock();
-					});
+					sendEndOfTransfer(client, trailerSupplier, result);
 					return;
 				}
 				new Task.Cpu<Void, NoException>("Send chunk of data to TCP Client", data.getPriority()) {
@@ -405,6 +362,31 @@ public class ChunkedTransfer extends TransferReceiver {
 			},
 			result
 		);
+	}
+	
+	private static void sendEndOfTransfer(TCPRemote client, Supplier<List<MimeHeader>> trailerSupplier, Async<IOException> result) {
+		IAsync<IOException> finalChunk = client.send(ByteBuffer.wrap(FINAL_CHUNK));
+		IAsync<IOException> trailer;
+		if (trailerSupplier != null) {
+			List<MimeHeader> trailers = trailerSupplier.get();
+			if (trailers != null) {
+				UnprotectedStringBuffer trailerString = new UnprotectedStringBuffer();
+				for (MimeHeader header : trailers)
+					header.appendTo(trailerString);
+				trailer = client.send(ByteBuffer.wrap(trailerString.toUsAsciiBytes()));
+			} else {
+				trailer = new Async<>(true);
+			}
+		} else {
+			trailer = new Async<>(true);
+		}
+		IAsync<IOException> sendEndOfTransfer = client.send(ByteBuffer.wrap(CRLF));
+		sendEndOfTransfer.onDone(() -> {
+			if (!finalChunk.forwardIfNotSuccessful(result) &&
+				!trailer.forwardIfNotSuccessful(result) &&
+				!sendEndOfTransfer.forwardIfNotSuccessful(result))
+				result.unblock();
+		});
 	}
 	
 }
