@@ -1,20 +1,47 @@
 package net.lecousin.framework.network.mime.header.parser;
 
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+
+import net.lecousin.framework.text.CharArrayString;
+import net.lecousin.framework.text.IString;
 
 /** RFC 822 Header field token. */
 public interface Token {
 	
+	/** Calculate the length of this token if converted into a string. */
+	int textLength();
+	
+	/** Calculate the length of the given tokens if converted into a string. */
+	static int textLength(List<Token> tokens) {
+		int total = 0;
+		for (Token token : tokens)
+			total += token.textLength();
+		return total;
+	}
+	
 	/** Convert this token into corresponding string. */
-	String asText();
+	void asText(IString s);
 	
 	/** Convert the given tokens into corresponding string. */
-	static String asText(List<Token> tokens) {
-		StringBuilder s = new StringBuilder();
+	static void asText(List<Token> tokens, IString s) {
 		for (Token token : tokens)
-			s.append(token.asText());
+			token.asText(s);
+	}
+
+	/** Convert this token into corresponding string. */
+	default String asString() {
+		CharArrayString s = new CharArrayString(textLength());
+		asText(s);
 		return s.toString();
+	}
+
+	/** Convert the given tokens into corresponding string. */
+	static String toString(List<Token> tokens) {
+		CharArrayString s = new CharArrayString(textLength(tokens));
+		asText(tokens, s);
+		return s.asString();
 	}
 
 	/** Remove any leading or trailing space tokens. */
@@ -28,11 +55,9 @@ public interface Token {
 	/** Remove comment tokens. */
 	@SuppressWarnings("squid:ForLoopCounterChangedCheck")
 	static void removeComments(List<Token> tokens) {
-		for (int i = 0; i < tokens.size(); )
-			if (tokens.get(i) instanceof Comment)
-				tokens.remove(i);
-			else
-				i++;
+		for (Iterator<Token> it = tokens.iterator(); it.hasNext(); )
+			if (it.next() instanceof Comment)
+				it.remove();
 	}
 	
 	/** Split into lists of tokens, using the given special character. */

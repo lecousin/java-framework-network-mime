@@ -50,35 +50,39 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <sonar.test.exclusions>**/src/test/**/*</sonar.test.exclusions>
+    <core.version>0.20.0</core.version>
+    <network.core.version>0.7.0</network.core.version>
+    <compression.version>0.1.10</compression.version>
   </properties>
 
   <dependencies>
   	<dependency>
   		<groupId>net.lecousin</groupId>
   		<artifactId>core</artifactId>
-		<version>0.16.4</version>
+		<version>${core.version}</version>
   	</dependency>
   	<dependency>
   		<groupId>net.lecousin.compression</groupId>
   		<artifactId>gzip</artifactId>
-  		<version>0.1.8</version>
+  		<version>${compression.version}</version>
   	</dependency>
   	<dependency>
   		<groupId>net.lecousin.framework.network</groupId>
   		<artifactId>core</artifactId>
-  		<version>0.6.2</version>
+  		<version>${network.core.version}</version>
+  		<scope>test</scope>
   	</dependency>
   	<dependency>
   		<groupId>net.lecousin</groupId>
   		<artifactId>core</artifactId>
-		<version>0.16.4</version>
+		<version>${core.version}</version>
   		<type>test-jar</type>
   		<scope>test</scope>
   	</dependency>
   	<dependency>
   		<groupId>net.lecousin.framework.network</groupId>
   		<artifactId>core</artifactId>
-  		<version>0.6.2</version>
+  		<version>${network.core.version}</version>
   		<type>test-jar</type>
   		<scope>test</scope>
   	</dependency>

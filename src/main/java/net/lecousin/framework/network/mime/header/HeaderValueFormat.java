@@ -1,11 +1,11 @@
 package net.lecousin.framework.network.mime.header;
 
-import java.io.IOException;
 import java.util.List;
 
 import net.lecousin.framework.network.mime.MimeException;
 import net.lecousin.framework.network.mime.header.parser.MimeHeaderValueParser;
 import net.lecousin.framework.network.mime.header.parser.Token;
+import net.lecousin.framework.text.IString;
 
 /**
  * Interface for a header format.
@@ -26,29 +26,25 @@ public interface HeaderValueFormat {
 	List<Token> generateTokens();
 	
 	/** Generate Mime header lines. */
-	default void generate(Appendable s, int firstLineMaxLength, int maxSubLineLength) {
+	default void generate(IString s, int firstLineMaxLength, int maxSubLineLength) {
 		List<Token> tokens = generateTokens();
 		int lineLength = 0;
 		boolean firstLine = true;
-		try {
-			for (Token token : tokens) {
-				String ts = token.asText();
-				if (firstLine && lineLength + ts.length() > firstLineMaxLength) {
-					firstLine = false;
-					s.append("\r\n\t");
-					lineLength = ts.length();
-					s.append(ts);
-				} else if (!firstLine && lineLength + ts.length() > maxSubLineLength) {
-					s.append("\r\n\t");
-					lineLength = ts.length();
-					s.append(ts);
-				} else {
-					lineLength += ts.length();
-					s.append(ts);
-				}
+		for (Token token : tokens) {
+			int tokenLength = token.textLength();
+			if (firstLine && lineLength + tokenLength > firstLineMaxLength) {
+				firstLine = false;
+				s.append("\r\n\t");
+				lineLength = tokenLength;
+				token.asText(s);
+			} else if (!firstLine && lineLength + tokenLength > maxSubLineLength) {
+				s.append("\r\n\t");
+				lineLength = tokenLength;
+				token.asText(s);
+			} else {
+				lineLength += tokenLength;
+				token.asText(s);
 			}
-		} catch (IOException e) {
-			// should not happen if Appendable is a StringBuilder or IString
 		}
 	}
 	

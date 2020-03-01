@@ -4,6 +4,8 @@ import java.util.Iterator;
 import java.util.List;
 
 import net.lecousin.framework.core.test.LCCoreAbstractTest;
+import net.lecousin.framework.network.mime.header.MimeHeader;
+import net.lecousin.framework.network.mime.header.MimeHeaders;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValues;
 import net.lecousin.framework.network.mime.header.parser.Address;
@@ -13,7 +15,7 @@ import net.lecousin.framework.network.mime.header.parser.MimeHeaderValueParser;
 import net.lecousin.framework.network.mime.header.parser.Space;
 import net.lecousin.framework.network.mime.header.parser.Token;
 import net.lecousin.framework.network.mime.header.parser.Word;
-import net.lecousin.framework.util.UnprotectedStringBuffer;
+import net.lecousin.framework.text.CharArrayStringBuffer;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -49,16 +51,13 @@ public class TestHeader extends LCCoreAbstractTest {
 		Assert.assertNull(values.getMainValue("abcd"));
 		Assert.assertFalse(values.hasMainValue("abcd"));
 		Assert.assertTrue(values.hasMainValue("aa"));
-		StringBuilder s = new StringBuilder();
+		CharArrayStringBuffer s = new CharArrayStringBuffer();
 		values.generate(s, 17, 13);
 		Assert.assertEquals("toto;titi=tata;\r\n\thello=world,\r\n\theho,aa;bb=cc", s.toString());
-		UnprotectedStringBuffer us = new UnprotectedStringBuffer();
-		values.generate(us, 17, 13);
-		Assert.assertEquals("toto;titi=tata;\r\n\thello=world,\r\n\theho,aa;bb=cc", us.toString());
 		
 		h.setRawValue("hello; fr=bonjour");
 		Assert.assertEquals("hello; fr=bonjour", h.getRawValue());
-		h.appendTo(new StringBuilder());
+		h.appendTo(new CharArrayStringBuffer());
 		v = h.getValue(ParameterizedHeaderValue.class);
 		Assert.assertEquals("hello", v.getMainValue());
 		Assert.assertEquals("bonjour", v.getParameter("fr"));
@@ -68,20 +67,18 @@ public class TestHeader extends LCCoreAbstractTest {
 		h.setValue(new ParameterizedHeaderValue("world", "fr", "monde", "test", "yes"));
 		Assert.assertEquals("world;fr=monde;test=yes", h.getRawValue());
 		h.setValue(new ParameterizedHeaderValue("world", "fr", "monde", "test", "yes"));
-		h.appendTo(new StringBuilder());
+		h.appendTo(new CharArrayStringBuffer());
 		v.setMainValue("hello");
 		v.setParameter("turlututu", "pointu");
 		
-		MimeMessage mime = new MimeMessage(
+		MimeHeaders mime = new MimeHeaders(
 			new MimeHeader("h1", "v1"),
 			new MimeHeader("h2", "v2")
 		);
-		mime.addHeader(new MimeHeader("h3", "v3"));
-		mime.setHeader(new MimeHeader("h1", "v11"));
-		mime.setHeader(new MimeHeader("h4", "v4"));
+		mime.add(new MimeHeader("h3", "v3"));
+		mime.set(new MimeHeader("h1", "v11"));
+		mime.set(new MimeHeader("h4", "v4"));
 		Assert.assertEquals(4, mime.getHeaders().size());
-		mime.getBodyReceivedAsOutput();
-		mime.getReadableStream().close();
 	}
 	
 	@Test
@@ -95,7 +92,7 @@ public class TestHeader extends LCCoreAbstractTest {
 		Assert.assertEquals(Space.class, tok.getClass());
 		tok = it.next();
 		Assert.assertEquals(Comment.class, tok.getClass());
-		Assert.assertEquals("(a comment)", ((Comment)tok).asText());
+		Assert.assertEquals("(a comment)", ((Comment)tok).asString());
 		tok = it.next();
 		Assert.assertEquals(Space.class, tok.getClass());
 		tok = it.next();
@@ -105,12 +102,12 @@ public class TestHeader extends LCCoreAbstractTest {
 		Assert.assertEquals(Space.class, tok.getClass());
 		tok = it.next();
 		Assert.assertEquals(DomainLiteral.class, tok.getClass());
-		Assert.assertEquals("[domain]", ((DomainLiteral)tok).asText());
+		Assert.assertEquals("[domain]", ((DomainLiteral)tok).asString());
 		tok = it.next();
 		Assert.assertEquals(Space.class, tok.getClass());
 		tok = it.next();
 		Assert.assertEquals(Address.class, tok.getClass());
-		Assert.assertEquals("<user@mail.com>", ((Address)tok).asText());
+		Assert.assertEquals("<user@mail.com>", ((Address)tok).asString());
 		((Address)tok).getContent();
 		tok = it.next();
 		Assert.assertEquals(Space.class, tok.getClass());
@@ -142,19 +139,19 @@ public class TestHeader extends LCCoreAbstractTest {
 		Assert.assertEquals(Space.class, tok2.getClass());
 		tok2 = it2.next();
 		Assert.assertEquals(Comment.class, tok2.getClass());
-		Assert.assertEquals("(comment2)", ((Comment)tok2).asText());
+		Assert.assertEquals("(comment2)", ((Comment)tok2).asString());
 		tok2 = it2.next();
 		Assert.assertEquals(Space.class, tok2.getClass());
 		tok2 = it2.next();
 		Assert.assertEquals(DomainLiteral.class, tok2.getClass());
-		Assert.assertEquals("[domain2]", ((DomainLiteral)tok2).asText());
+		Assert.assertEquals("[domain2]", ((DomainLiteral)tok2).asString());
 		Assert.assertFalse(it2.hasNext());
 		
 		tok = it.next();
 		Assert.assertEquals(Space.class, tok.getClass());
 		tok = it.next();
 		Assert.assertEquals(Comment.class, tok.getClass());
-		Assert.assertEquals("(comment3)", ((Comment)tok).asText());
+		Assert.assertEquals("(comment3)", ((Comment)tok).asString());
 		Assert.assertFalse(it.hasNext());
 		
 		tokens = MimeHeaderValueParser.parse(" hel\\5lo ");

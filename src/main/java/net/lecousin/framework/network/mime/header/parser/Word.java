@@ -1,5 +1,7 @@
 package net.lecousin.framework.network.mime.header.parser;
 
+import net.lecousin.framework.text.IString;
+
 /** Word (text) token. */
 public class Word implements Token {
 
@@ -15,8 +17,13 @@ public class Word implements Token {
 	}
 	
 	@Override
-	public String asText() {
-		return word;
+	public int textLength() {
+		return word.length();
+	}
+	
+	@Override
+	public void asText(IString s) {
+		s.append(word);
 	}
 	
 }

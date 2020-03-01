@@ -2,6 +2,8 @@ package net.lecousin.framework.network.mime.header.parser;
 
 import java.util.List;
 
+import net.lecousin.framework.text.IString;
+
 /** Comment token. */
 public class Comment implements Token {
 
@@ -15,10 +17,17 @@ public class Comment implements Token {
 	public List<Token> getContent() {
 		return tokens;
 	}
+
+	@Override
+	public int textLength() {
+		return Token.textLength(tokens) + 2;
+	}
 	
 	@Override
-	public String asText() {
-		return "(" + Token.asText(tokens) + ")";
+	public void asText(IString s) {
+		s.append('(');
+		Token.asText(tokens, s);
+		s.append(')');
 	}
 	
 }

@@ -1,13 +1,14 @@
-package net.lecousin.framework.network.mime;
+package net.lecousin.framework.network.mime.header;
 
 import java.util.HashMap;
 import java.util.Map;
 
 import net.lecousin.framework.application.LCCore;
-import net.lecousin.framework.network.mime.header.HeaderValueFormat;
-import net.lecousin.framework.util.IString;
+import net.lecousin.framework.network.mime.MimeException;
+import net.lecousin.framework.text.CharArrayStringBuffer;
+import net.lecousin.framework.text.IString;
 
-/** Header of a MIME Message. */
+/** Header of a MIME Message (RFC 822). */
 public class MimeHeader {
 
 	/** Constructor. */
@@ -41,7 +42,7 @@ public class MimeHeader {
 	/** Return the value as a raw string. */
 	public String getRawValue() {
 		if (rawValue == null && parsed != null) {
-			StringBuilder s = new StringBuilder();
+			CharArrayStringBuffer s = new CharArrayStringBuffer();
 			parsed.values().iterator().next().generate(s, Integer.MAX_VALUE, Integer.MAX_VALUE);
 			rawValue = s.toString();
 		}
@@ -63,7 +64,7 @@ public class MimeHeader {
 		T t;
 		try { t = format.newInstance(); }
 		catch (Exception e) {
-			LCCore.getApplication().getLoggerFactory().getLogger(MimeMessage.class).error("Unable to instantiate header format class", e);
+			LCCore.getApplication().getLoggerFactory().getLogger(MimeHeader.class).error("Unable to instantiate header format class", e);
 			return null;
 		}
 		t.parseRawValue(rawValue);
@@ -85,17 +86,6 @@ public class MimeHeader {
 	}
 	
 	/** Generate this header into the given string. */
-	public void appendTo(StringBuilder s) {
-		s.append(name).append(": ");
-		if (rawValue == null && parsed != null) {
-			parsed.values().iterator().next().generate(s, 80 - name.length() - 2, 79);
-		} else {
-			s.append(rawValue);
-		}
-		s.append("\r\n");
-	}
-	
-	/** Generate this header into the given string. */
 	public void appendTo(IString s) {
 		s.append(name).append(": ");
 		if (rawValue == null && parsed != null) {
@@ -103,7 +93,7 @@ public class MimeHeader {
 		} else {
 			s.append(rawValue);
 		}
-		s.append(MimeMessage.CRLF);
+		s.append("\r\n");
 	}
 	
 }

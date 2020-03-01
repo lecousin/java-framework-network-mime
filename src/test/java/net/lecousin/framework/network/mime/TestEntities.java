@@ -10,11 +10,11 @@ import java.util.zip.Deflater;
 import javax.mail.internet.MimeMultipart;
 
 import net.lecousin.compression.gzip.GZipWritable;
-import net.lecousin.framework.concurrent.Task;
-import net.lecousin.framework.concurrent.Threading;
 import net.lecousin.framework.concurrent.async.AsyncSupplier;
-import net.lecousin.framework.concurrent.async.Async;
+import net.lecousin.framework.concurrent.threads.Task;
+import net.lecousin.framework.concurrent.threads.Threading;
 import net.lecousin.framework.core.test.LCCoreAbstractTest;
+import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.IOAsInputStream;
 import net.lecousin.framework.io.IOFromInputStream;
@@ -22,6 +22,8 @@ import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
 import net.lecousin.framework.io.buffering.SimpleBufferedReadable;
+import net.lecousin.framework.network.mime.entity.BinaryEntity;
+import net.lecousin.framework.network.mime.entity.DefaultMimeEntityFactory;
 import net.lecousin.framework.network.mime.entity.FormDataEntity;
 import net.lecousin.framework.network.mime.entity.FormDataEntity.PartFile;
 import net.lecousin.framework.network.mime.entity.FormUrlEncodedEntity;
@@ -30,7 +32,9 @@ import net.lecousin.framework.network.mime.entity.MultipartEntity;
 import net.lecousin.framework.network.mime.entity.TextEntity;
 import net.lecousin.framework.network.mime.header.InternetAddressHeaderValue;
 import net.lecousin.framework.network.mime.header.InternetAddressListHeaderValue;
+import net.lecousin.framework.network.mime.header.MimeHeaders;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
+import net.lecousin.framework.text.CharArrayStringBuffer;
 import net.lecousin.framework.util.Pair;
 
 import org.junit.Assert;
@@ -56,12 +60,9 @@ public class TestEntities extends LCCoreAbstractTest {
 	
 	private static void check(FormUrlEncodedEntity source) throws Exception {
 		// generate
-		ByteBuffersIO io = generateBody(source);
-		io.seekSync(SeekType.FROM_BEGINNING, 0);
+		IO.Readable io = source.writeEntity().blockResult(0);
 		// parse
-		FormUrlEncodedEntity target = new FormUrlEncodedEntity();
-		Async<IOException> parse = target.parse(io, StandardCharsets.UTF_8);
-		parse.blockThrow(0);
+		FormUrlEncodedEntity target = (FormUrlEncodedEntity)MimeEntity.parse(io, DefaultMimeEntityFactory.getInstance()).blockResult(0);
 		// check they are the same
 		Iterator<Pair<String, String>> itSrc = source.getParameters().iterator();
 		Iterator<Pair<String, String>> itTar = target.getParameters().iterator();
@@ -75,17 +76,11 @@ public class TestEntities extends LCCoreAbstractTest {
 		Assert.assertFalse(itTar.hasNext());
 	}
 	
-	private static ByteBuffersIO generateBody(MimeEntity entity) throws Exception {
-		ByteBuffersIO out = new ByteBuffersIO(false, "MIME entity", Task.PRIORITY_NORMAL);
-		AsyncSupplier<Long, IOException> copy = IOUtil.copy(entity.getBodyToSend(), out, -1, false, null, 0);
-		copy.blockThrow(0);
-		return out;
-	}
-	
 	@Test
 	public void testParseFormUrlEncodedEntity() throws Exception {
-		MimeMessage mime = MimeUtil.parseMimeMessage(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("formurlencoded.raw"), "formurlencoded.raw", Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL), 4096)).blockResult(0);
-		FormUrlEncodedEntity entity = FormUrlEncodedEntity.from(mime, true).blockResult(0);
+		MimeEntity mime = MimeEntity.parse(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("formurlencoded.raw"), "formurlencoded.raw", Threading.getCPUTaskManager(), Task.Priority.NORMAL), 4096), DefaultMimeEntityFactory.getInstance()).blockResult(0);
+		Assert.assertTrue(mime instanceof FormUrlEncodedEntity);
+		FormUrlEncodedEntity entity = (FormUrlEncodedEntity)mime;
 		Assert.assertEquals("Cosby", entity.getParameter("home"));
 		Assert.assertEquals("flies", entity.getParameter("favorite flavor"));
 	}
@@ -102,24 +97,25 @@ public class TestEntities extends LCCoreAbstractTest {
 	
 	private void testParseMultipart(String filename) throws Exception {
 		MultipartEntity entity = new MultipartEntity("---------------------------114772229410704779042051621609".getBytes(), "form-data");
-		IOFromInputStream body = new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL);
-		Async<IOException> parse = entity.parse(body, true);
-		parse.blockThrow(0);
+		entity.setPartFactory(DefaultMimeEntityFactory.getInstance());
+		IOFromInputStream body = new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.Priority.NORMAL);
+		body.createProducer(false).toConsumer(entity.createConsumer(), "Parse MIME", Task.Priority.NORMAL).blockThrow(0);
+		body.close();
 		Assert.assertEquals(5, entity.getParts().size());
-		for (MimeMessage p : entity.getParts()) {
-			ParameterizedHeaderValue dispo = p.getFirstHeaderValue(MimeMessage.CONTENT_DISPOSITION, ParameterizedHeaderValue.class);
+		for (MimeEntity p : entity.getParts()) {
+			ParameterizedHeaderValue dispo = p.getHeaders().getFirstValue(MimeHeaders.CONTENT_DISPOSITION, ParameterizedHeaderValue.class);
 			Assert.assertEquals("form-data", dispo.getMainValue());
 			String name = dispo.getParameter("name");
 			if ("name".equals(name)) {
-				Assert.assertEquals("AJ ONeal", IOUtil.readFullyAsStringSync(p.getBodyReceivedAsInput(), StandardCharsets.US_ASCII));
+				Assert.assertEquals("AJ ONeal", IOUtil.readFullyAsStringSync(((BinaryEntity)p).getContent(), StandardCharsets.US_ASCII));
 			} else if ("email".equals(name)) {
-				Assert.assertEquals("coolaj86@gmail.com", IOUtil.readFullyAsStringSync(p.getBodyReceivedAsInput(), StandardCharsets.US_ASCII));
+				Assert.assertEquals("coolaj86@gmail.com", IOUtil.readFullyAsStringSync(((BinaryEntity)p).getContent(), StandardCharsets.US_ASCII));
 			} else if ("avatar".equals(name)) {
 				// png
-				Assert.assertEquals("image/png", p.getContentTypeValue());
+				Assert.assertEquals("image/png", p.getHeaders().getContentTypeValue());
 			} else if ("attachments[]".equals(name)) {
 				// text
-				Assert.assertEquals("text/plain", p.getContentTypeValue());
+				Assert.assertEquals("text/plain", p.getHeaders().getContentTypeValue());
 			} else
 				throw new AssertionError("Unexpected multipart form-data name " + name);
 		}
@@ -128,11 +124,11 @@ public class TestEntities extends LCCoreAbstractTest {
 	@Test
 	public void testGenerateMailWithMultipart() throws Exception {
 		MultipartEntity mailText = new MultipartEntity("alternative");
-		mailText.add(MimeUtil.mimeFromString("Hello tester", StandardCharsets.UTF_8, "text/plain"));
-		mailText.add(MimeUtil.mimeFromString("<html><body>Hello tester</body></html>", StandardCharsets.UTF_8, "text/html"));
-		mailText.addHeaderRaw("Subject", "This is a test");
-		ByteBuffersIO out = new ByteBuffersIO(false, "Mail", Task.PRIORITY_NORMAL);
-		AsyncSupplier<Long, IOException> copy = IOUtil.copy(mailText.getReadableStream(), out, -1, false, null, 0);
+		mailText.add(new TextEntity("Hello tester", StandardCharsets.UTF_8, "text/plain"));
+		mailText.add(new TextEntity("<html><body>Hello tester</body></html>", StandardCharsets.UTF_8, "text/html"));
+		mailText.getHeaders().addRawValue("Subject", "This is a test");
+		ByteBuffersIO out = new ByteBuffersIO(false, "Mail", Task.Priority.NORMAL);
+		AsyncSupplier<Long, IOException> copy = IOUtil.copy(mailText.writeEntity().blockResult(0), out, -1, false, null, 0);
 		copy.blockThrow(0);
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 		String s = IOUtil.readFullyAsStringSync(out, StandardCharsets.UTF_8);
@@ -146,7 +142,7 @@ public class TestEntities extends LCCoreAbstractTest {
 		Object content = mail.getContent();
 		Assert.assertTrue(content instanceof MimeMultipart);
 		MimeMultipart m = (MimeMultipart)content;
-		Assert.assertTrue("Final boundary found", m.isComplete());
+		Assert.assertTrue("Final boundary not found", m.isComplete());
 		Assert.assertEquals(2, m.getCount());
 		Assert.assertEquals("Hello tester", m.getBodyPart(0).getContent());
 		Assert.assertEquals("<html><body>Hello tester</body></html>", m.getBodyPart(1).getContent());
@@ -160,31 +156,37 @@ public class TestEntities extends LCCoreAbstractTest {
 		form.addField("test", "1", StandardCharsets.US_ASCII);
 		form.addFile("myfile", "test.html", new ParameterizedHeaderValue("text/html", "charset", "utf-8"), new ByteArrayIO("<html></html>".getBytes(StandardCharsets.UTF_8), "test"));
 		ByteArrayIO gz = new ByteArrayIO(1024, "test");
-		GZipWritable gzip = new GZipWritable(gz, Task.PRIORITY_NORMAL, Deflater.BEST_COMPRESSION, 3);
+		GZipWritable gzip = new GZipWritable(gz, Task.Priority.NORMAL, Deflater.BEST_COMPRESSION, 3);
 		gzip.writeSync(ByteBuffer.wrap("<html><body></body></html>".getBytes(StandardCharsets.UTF_8)));
 		gzip.finishSynch();
 		gz.seekSync(SeekType.FROM_BEGINNING, 0);
 		PartFile f = form.addFile("encoded", "test.html.gz", new ParameterizedHeaderValue("text/html", "charset", "utf-8"), gz);
-		f.setHeaderRaw(MimeMessage.CONTENT_ENCODING, "gzip");
+		f.getHeaders().setRawValue(MimeHeaders.CONTENT_ENCODING, "gzip");
 		form.addField("hello", "world", StandardCharsets.UTF_8);
 		
-		ByteBuffersIO out = new ByteBuffersIO(false, "Form", Task.PRIORITY_NORMAL);
-		AsyncSupplier<Long, IOException> copy = IOUtil.copy(form.getReadableStream(), out, -1, false, null, 0);
+		ByteBuffersIO out = new ByteBuffersIO(false, "Form", Task.Priority.NORMAL);
+		AsyncSupplier<Long, IOException> copy = IOUtil.copy(form.writeEntity().blockResult(0), out, -1, false, null, 0);
 		copy.blockThrow(0);
+
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
+		String generated = IOUtil.readFullyAsString(out, StandardCharsets.ISO_8859_1, Task.Priority.NORMAL).blockResult(0).asString();
+		System.out.println("_______________ generated FormDataEntity:");
+		System.out.println(generated);
+		System.out.println("_______________ end of generated FormDataEntity");
 
 		FormDataEntity parse = new FormDataEntity(form.getBoundary());
-		parse.parse(out, true).blockThrow(0);
+		out.seekSync(SeekType.FROM_BEGINNING, 0);
+		out.createProducer(false).toConsumer(parse.createConsumer(), "Parse MIME", Task.Priority.NORMAL).blockThrow(0);
 		Assert.assertEquals(2, parse.getFields().size());
 		Assert.assertEquals("1", parse.getFieldValue("test"));
 		Assert.assertEquals("world", parse.getFieldValue("hello"));
 		PartFile file = parse.getFile("myfile");
 		Assert.assertEquals("test.html", file.getFilename());
-		String content = IOUtil.readFullyAsStringSync(file.getBodyToSend(), StandardCharsets.UTF_8);
+		String content = IOUtil.readFullyAsStringSync(file.getContent(), StandardCharsets.UTF_8);
 		Assert.assertEquals("<html></html>", content);
 		file = parse.getFile("encoded");
 		Assert.assertEquals("test.html.gz", file.getFilename());
-		content = IOUtil.readFullyAsStringSync(file.getBodyToSend(), StandardCharsets.UTF_8);
+		content = IOUtil.readFullyAsStringSync(file.getContent(), StandardCharsets.UTF_8);
 		Assert.assertEquals("<html><body></body></html>", content);
 		
 		Assert.assertNull(parse.getFile("tutu"));
@@ -204,21 +206,21 @@ public class TestEntities extends LCCoreAbstractTest {
 		src.setCharset(StandardCharsets.UTF_16);
 		Assert.assertEquals("This is still a text", src.getText());
 		Assert.assertEquals(StandardCharsets.UTF_16, src.getCharset());
-		src.addHeader("MyAddress", new InternetAddressHeaderValue("Myself", "me@domain.org"));
-		src.addHeader("Toto", new InternetAddressHeaderValue(null, "toto@domain.org"));
-		InternetAddressHeaderValue addr = src.getFirstHeaderValue("myaddress", InternetAddressHeaderValue.class);
+		src.getHeaders().add("MyAddress", new InternetAddressHeaderValue("Myself", "me@domain.org"));
+		src.getHeaders().add("Toto", new InternetAddressHeaderValue(null, "toto@domain.org"));
+		InternetAddressHeaderValue addr = src.getHeaders().getFirstValue("myaddress", InternetAddressHeaderValue.class);
 		addr.setDisplayName("This is myself");
-		src.setHeader("myaddress", addr);
-		addr = src.getFirstHeaderValue("toto", InternetAddressHeaderValue.class);
+		src.getHeaders().set("myaddress", addr);
+		addr = src.getHeaders().getFirstValue("toto", InternetAddressHeaderValue.class);
 		addr.setAddress("toto@zero.com");
-		src.setHeader("Toto", addr);
+		src.getHeaders().set("Toto", addr);
 		InternetAddressListHeaderValue addresses = new InternetAddressListHeaderValue();
 		addresses.addAddress("First", "1@first.net");
 		addresses.addAddress(null, "2@second.net");
-		src.setHeader("List", addresses);
+		src.getHeaders().set("List", addresses);
 
-		ByteBuffersIO out = new ByteBuffersIO(false, "Entity", Task.PRIORITY_NORMAL);
-		AsyncSupplier<Long, IOException> copy = IOUtil.copy(src.getReadableStream(), out, -1, false, null, 0);
+		ByteBuffersIO out = new ByteBuffersIO(false, "Entity", Task.Priority.NORMAL);
+		AsyncSupplier<Long, IOException> copy = IOUtil.copy(src.writeEntity().blockResult(0), out, -1, false, null, 0);
 		copy.blockThrow(0);
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 		String s = IOUtil.readFullyAsStringSync(out, StandardCharsets.UTF_8);
@@ -227,20 +229,21 @@ public class TestEntities extends LCCoreAbstractTest {
 		System.out.println("_____________ End of Text Entity ___________");
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
 		
-		MimeMessage mime = MimeUtil.parseMimeMessage(out).blockResult(0);
-		TextEntity parsed = TextEntity.from(mime, true).blockResult(0);
+		MimeEntity mime = MimeEntity.parse(out, DefaultMimeEntityFactory.getInstance()).blockResult(0);
+		Assert.assertTrue(mime instanceof TextEntity);
+		TextEntity parsed = (TextEntity)mime;
 		Assert.assertEquals("This is still a text", parsed.getText());
 		Assert.assertEquals(StandardCharsets.UTF_16, parsed.getCharset());
 		
-		addr = parsed.getFirstHeaderValue("MyAddress", InternetAddressHeaderValue.class);
+		addr = parsed.getHeaders().getFirstValue("MyAddress", InternetAddressHeaderValue.class);
 		Assert.assertNotNull(addr);
 		Assert.assertEquals("This is myself", addr.getDisplayName());
 		Assert.assertEquals("me@domain.org", addr.getAddress());
-		addr = parsed.getFirstHeaderValue("toto", InternetAddressHeaderValue.class);
+		addr = parsed.getHeaders().getFirstValue("toto", InternetAddressHeaderValue.class);
 		Assert.assertNotNull(addr);
 		Assert.assertNull(addr.getDisplayName());
 		Assert.assertEquals("toto@zero.com", addr.getAddress());
-		addresses = parsed.getFirstHeaderValue("list", InternetAddressListHeaderValue.class);
+		addresses = parsed.getHeaders().getFirstValue("list", InternetAddressListHeaderValue.class);
 		Assert.assertNotNull(addresses);
 		Assert.assertEquals(2, addresses.getAddresses().size());
 		Assert.assertEquals("First", addresses.getAddresses().get(0).getDisplayName());
@@ -253,33 +256,37 @@ public class TestEntities extends LCCoreAbstractTest {
 	
 	@Test
 	public void testParseEML() throws Exception {
-		MimeMessage mime = MimeUtil.parseMimeMessage(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("html-attachment-encoded-filename.eml"), "html-attachment-encoded-filename.eml", Threading.getCPUTaskManager(), Task.PRIORITY_NORMAL), 4096)).blockResult(0);
-		MultipartEntity eml = MultipartEntity.from(mime, true).blockResult(0);
+		MimeEntity mime = MimeEntity.parse(new SimpleBufferedReadable(new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream("html-attachment-encoded-filename.eml"), "html-attachment-encoded-filename.eml", Threading.getCPUTaskManager(), Task.Priority.NORMAL), 4096), DefaultMimeEntityFactory.getInstance()).blockResult(0);
+		Assert.assertTrue(mime instanceof MultipartEntity);
+		MultipartEntity eml = (MultipartEntity)mime;
 		Assert.assertEquals(2, eml.getParts().size());
 
 		// part 1 is the mail with alternative plain and html
-		MimeMessage part = eml.getParts().get(0);
-		MultipartEntity textAlt = MultipartEntity.from(part, true).blockResult(0);
+		MimeEntity part = eml.getParts().get(0);
+		Assert.assertTrue(part instanceof MultipartEntity);
+		MultipartEntity textAlt = (MultipartEntity)part;
 		Assert.assertEquals(2, textAlt.getParts().size());
-		MimeMessage textPart = textAlt.getParts().get(0);
-		TextEntity text = TextEntity.from(textPart, true).blockResult(0);
+		MimeEntity textPart = textAlt.getParts().get(0);
+		Assert.assertTrue(textPart instanceof TextEntity);
+		TextEntity text = (TextEntity)textPart;
 		Assert.assertEquals("Your email client does not support HTML emails", text.getText());
 		textPart = textAlt.getParts().get(1);
-		text = TextEntity.from(textPart, true).blockResult(0);
+		Assert.assertTrue(textPart instanceof TextEntity);
+		text = (TextEntity)textPart;
 		Assert.assertEquals("<html>Test Message<html>", text.getText());
 		
 		// part 2 is the email attachment
 		part = eml.getParts().get(1);
-		ParameterizedHeaderValue dispo = part.getFirstHeaderValue(MimeMessage.CONTENT_DISPOSITION, ParameterizedHeaderValue.class);
+		ParameterizedHeaderValue dispo = part.getHeaders().getFirstValue(MimeHeaders.CONTENT_DISPOSITION, ParameterizedHeaderValue.class);
 		Assert.assertNotNull(dispo);
 		Assert.assertEquals("Test_Attachment_-_a>ä,_o>ö,_u>ü,_au>äu", dispo.getParameter("filename"));
-		Assert.assertEquals("test", MimeUtil.decodeRFC2047(part.getFirstHeaderRawValue("Test-B64")));
+		Assert.assertEquals("test", MimeUtil.decodeRFC2047(part.getHeaders().getFirstRawValue("Test-B64")));
 		
-		Assert.assertEquals(2, eml.getHeaders("Received").size());
-		Assert.assertEquals(1, eml.getHeaders("From").size());
-		Assert.assertTrue(eml.hasHeader("To"));
-		Assert.assertEquals(1, eml.getHeadersValues("To", InternetAddressListHeaderValue.class).size());
-		InternetAddressListHeaderValue ccList = eml.getFirstHeaderValue("Cc", InternetAddressListHeaderValue.class);
+		Assert.assertEquals(2, eml.getHeaders().getList("Received").size());
+		Assert.assertEquals(1, eml.getHeaders().getList("From").size());
+		Assert.assertTrue(eml.getHeaders().has("To"));
+		Assert.assertEquals(1, eml.getHeaders().getValues("To", InternetAddressListHeaderValue.class).size());
+		InternetAddressListHeaderValue ccList = eml.getHeaders().getFirstValue("Cc", InternetAddressListHeaderValue.class);
 		Assert.assertEquals(3, ccList.getAddresses().size());
 		Assert.assertEquals("Test1", ccList.getAddresses().get(0).getDisplayName());
 		Assert.assertEquals("test1@lecousin.net", ccList.getAddresses().get(0).getAddress());
@@ -288,8 +295,8 @@ public class TestEntities extends LCCoreAbstractTest {
 		Assert.assertEquals("Test Three", ccList.getAddresses().get(2).getDisplayName());
 		Assert.assertEquals("test3@lecousin.net", ccList.getAddresses().get(2).getAddress());
 		
-		Assert.assertNull(eml.getContentLength());
-		eml.appendHeadersTo(new StringBuilder());
+		Assert.assertNull(eml.getHeaders().getContentLength());
+		eml.getHeaders().appendTo(new CharArrayStringBuffer());
 	}
 	
 }

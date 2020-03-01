@@ -1,6 +1,5 @@
 package net.lecousin.framework.network.mime.header;
 
-import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -9,6 +8,7 @@ import net.lecousin.framework.network.mime.MimeUtil;
 import net.lecousin.framework.network.mime.header.parser.SpecialCharacter;
 import net.lecousin.framework.network.mime.header.parser.Token;
 import net.lecousin.framework.network.mime.header.parser.Word;
+import net.lecousin.framework.text.CharArrayString;
 import net.lecousin.framework.util.Pair;
 
 /**
@@ -93,19 +93,20 @@ public class ParameterizedHeaderValue implements HeaderValueFormat {
 		for (List<Token> param : params) {
 			Token.trim(param);
 			Token.removeComments(param);
-			String s = Token.asText(param);
+			CharArrayString s = new CharArrayString(Token.textLength(param));
+			Token.asText(param, s);
 			int i = s.indexOf('=');
 			try {
 				if (i >= 0) {
-					String name = s.substring(0, i).trim();
-					String value = MimeUtil.decodeRFC2047(s.substring(i + 1));
+					String name = s.substring(0, i).trim().asString();
+					String value = MimeUtil.decodeRFC2047(s.substring(i + 1).asString());
 					parameters.add(new Pair<>(name, value));
 				} else if (mainValue == null) {
-					mainValue = MimeUtil.decodeRFC2047(s);
+					mainValue = MimeUtil.decodeRFC2047(s.asString());
 				} else {
-					parameters.add(new Pair<>(s, ""));
+					parameters.add(new Pair<>(s.asString(), ""));
 				}
-			} catch (IOException e) {
+			} catch (Exception e) {
 				throw new MimeException("Error decoding RFC2047 value", e);
 			}
 		}
@@ -115,14 +116,14 @@ public class ParameterizedHeaderValue implements HeaderValueFormat {
 	public List<Token> generateTokens() {
 		List<Token> list = new LinkedList<>();
 		if (mainValue != null) {
-			list.add(new Word(MimeUtil.encodeUTF8Value(mainValue)));
+			list.add(new Word(MimeUtil.encodeHeaderValueWithUTF8(mainValue)));
 		}
 		for (Pair<String, String> param : parameters) {
 			if (!list.isEmpty())
 				list.add(new SpecialCharacter(';'));
 			list.add(new Word(param.getValue1()));
 			list.add(new Word("="));
-			list.add(new Word(MimeUtil.encodeUTF8Value(param.getValue2())));
+			list.add(new Word(MimeUtil.encodeHeaderValueWithUTF8(param.getValue2())));
 		}
 		return list;
 	}

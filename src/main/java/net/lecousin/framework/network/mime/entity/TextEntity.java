@@ -1,17 +1,27 @@
 package net.lecousin.framework.network.mime.entity;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
+import net.lecousin.framework.concurrent.async.Async;
 import net.lecousin.framework.concurrent.async.AsyncSupplier;
+import net.lecousin.framework.concurrent.async.IAsync;
+import net.lecousin.framework.concurrent.util.AsyncConsumer;
+import net.lecousin.framework.concurrent.util.AsyncProducer;
+import net.lecousin.framework.encoding.charset.CharacterDecoder;
 import net.lecousin.framework.io.IO;
-import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
+import net.lecousin.framework.io.data.ByteArray;
+import net.lecousin.framework.io.data.Chars;
+import net.lecousin.framework.math.RangeLong;
 import net.lecousin.framework.network.mime.MimeException;
-import net.lecousin.framework.network.mime.MimeMessage;
+import net.lecousin.framework.network.mime.header.MimeHeaders;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
-import net.lecousin.framework.util.UnprotectedStringBuffer;
+import net.lecousin.framework.text.CharArrayStringBuffer;
+import net.lecousin.framework.util.Pair;
+import net.lecousin.framework.util.Triple;
 
 /**
  * Text entity.
@@ -22,39 +32,21 @@ public class TextEntity extends MimeEntity {
 
 	/** Constructor. */
 	public TextEntity(String text, Charset charset, String textMimeType) {
+		super(null);
 		this.text = text;
 		this.charset = charset;
-		setHeaderRaw(CONTENT_TYPE, textMimeType + ";" + CHARSET_PARAMETER + "=" + charset.name());
+		setHeader(MimeHeaders.CONTENT_TYPE, textMimeType + ";" + CHARSET_PARAMETER + "=" + charset.name());
 	}
 	
-	protected TextEntity(MimeMessage from) throws MimeException {
-		super(from);
+	/** From existing headers. */
+	public TextEntity(MimeEntity parent, MimeHeaders from) throws MimeException {
+		super(parent, from);
 		this.text = "";
-		ParameterizedHeaderValue type = getFirstHeaderValue(CONTENT_TYPE, ParameterizedHeaderValue.class);
+		ParameterizedHeaderValue type = headers.getContentType();
 		if (type == null || type.getParameter(CHARSET_PARAMETER) == null)
 			charset = StandardCharsets.UTF_8;
 		else
 			charset = Charset.forName(type.getParameter(CHARSET_PARAMETER));
-	}
-	
-	/** Parse the body of the given MimeMessage into a TextEntity.
-	 * @param fromReceived if true, the received body is parsed, else the body to send is parsed from the mime message.
-	 */
-	public static AsyncSupplier<TextEntity, IOException> from(MimeMessage mime, boolean fromReceived) {
-		TextEntity entity;
-		try { entity = new TextEntity(mime); }
-		catch (Exception e) { return new AsyncSupplier<>(null, IO.error(e)); }
-		IO.Readable body = fromReceived ? mime.getBodyReceivedAsInput() : mime.getBodyToSend();
-		if (body == null)
-			return new AsyncSupplier<>(entity, null);
-		AsyncSupplier<UnprotectedStringBuffer, IOException> task = IOUtil.readFullyAsString(body, entity.charset, body.getPriority());
-		AsyncSupplier<TextEntity, IOException> result = new AsyncSupplier<>();
-		task.onDone(str -> {
-			entity.text = str.asString();
-			result.unblockSuccess(entity);
-		}, result);
-		result.onDone(body::closeAsync);
-		return result;
 	}
 	
 	private String text;
@@ -76,19 +68,91 @@ public class TextEntity extends MimeEntity {
 	public void setCharset(Charset charset) throws MimeException {
 		if (charset.equals(this.charset)) return;
 		this.charset = charset;
-		ParameterizedHeaderValue type = getFirstHeaderValue(CONTENT_TYPE, ParameterizedHeaderValue.class);
+		ParameterizedHeaderValue type = headers.getContentType();
 		if (type == null) {
 			type = new ParameterizedHeaderValue("text/plain", CHARSET_PARAMETER, charset.name());
-			addHeader(CONTENT_TYPE, type);
+			headers.add(MimeHeaders.CONTENT_TYPE, type);
 		} else {
 			type.setParameterIgnoreCase(CHARSET_PARAMETER, charset.name());
-			setHeader(CONTENT_TYPE, type);
+			headers.set(MimeHeaders.CONTENT_TYPE, type);
 		}
 	}
 	
 	@Override
-	public IO.Readable getBodyToSend() {
-		return new ByteArrayIO(text.getBytes(charset), "TextEntity");
+	public AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> createBodyProducer() {
+		byte[] body = text.getBytes(charset);
+		return new AsyncSupplier<>(new Pair<>(Long.valueOf(body.length), new AsyncProducer.SingleData<>(ByteBuffer.wrap(body))), null);
 	}
 	
+	@Override
+	public boolean canProduceBodyRange() {
+		return true;
+	}
+	
+	@Override
+	public Triple<RangeLong, Long, BinaryEntity> createBodyRange(RangeLong range) {
+		byte[] body = text.getBytes(charset);
+		RangeLong r = new RangeLong(range.min, range.max);
+		if (r.min == -1) {
+			r.min = body.length - r.max;
+			r.max = body.length - 1L;
+		} else if (r.max == -1 || r.max > body.length - 1) {
+			r.max = body.length - 1L;
+		}
+		byte[] subBody;
+		if (r.min == 0 && r.max == body.length - 1)
+			subBody = body;
+		else {
+			subBody = new byte[(int)(r.max - r.min + 1)];
+			System.arraycopy(body, (int)r.min, subBody, 0, subBody.length);
+		}
+		BinaryEntity subEntity = new BinaryEntity(null, new MimeHeaders(getHeaders().getHeaders()));
+		subEntity.setContent(new ByteArrayIO(subBody, "range of text entity"));
+		return new Triple<>(r, Long.valueOf(body.length), subEntity);
+	}
+	
+	@Override
+	public AsyncConsumer<ByteBuffer, IOException> createConsumer() {
+		return new Consumer(1024);
+	}
+	
+	/** Consumer to parse the body. */
+	public class Consumer implements AsyncConsumer<ByteBuffer, IOException> {
+		/** Constructor. */
+		public Consumer(int bufferSize) {
+			try {
+				decoder = CharacterDecoder.get(charset, bufferSize);
+			} catch (Exception e) {
+				error = IO.error(e);
+			}
+		}
+		
+		private CharacterDecoder decoder;
+		private CharArrayStringBuffer string = new CharArrayStringBuffer();
+		private IOException error;
+
+		@Override
+		public IAsync<IOException> consume(ByteBuffer data) {
+			if (error != null) return new Async<>(error);
+			Chars.Readable chars = decoder.decode(ByteArray.fromByteBuffer(data));
+			chars.get(string, chars.remaining());
+			return new Async<>(true);
+		}
+
+		@Override
+		public IAsync<IOException> end() {
+			if (error != null) return new Async<>(error);
+			Chars.Readable chars = decoder.flush();
+			if (chars != null)
+				chars.get(string, chars.remaining());
+			text = string.toString();
+			return new Async<>(true);
+		}
+
+		@Override
+		public void error(IOException error) {
+			// nothing
+		}
+	}
+
 }

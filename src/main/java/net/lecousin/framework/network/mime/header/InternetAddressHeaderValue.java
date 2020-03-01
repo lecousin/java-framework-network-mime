@@ -52,17 +52,17 @@ public class InternetAddressHeaderValue implements HeaderValueFormat {
 		if (i == tokens.size()) {
 			// no Address token => full text is considered as address
 			displayName = null;
-			address = Token.asText(tokens);
+			address = Token.toString(tokens);
 			return;
 		}
 		List<Token> addrTokens = ((Address)tokens.get(i)).getContent();
 		Token.trim(addrTokens);
-		address = Token.asText(addrTokens);
+		address = Token.toString(addrTokens);
 		while (tokens.size() > i)
 			tokens.remove(i);
 		Token.trim(tokens);
 		if (!tokens.isEmpty())
-			displayName = Token.asText(tokens);
+			displayName = Token.toString(tokens);
 		else
 			displayName = null;
 	}
