@@ -101,10 +101,6 @@ public final class ChunkedTransfer {
 							return null;
 						continue;
 					}
-					if (chunkSize < 0) {
-						onDone.unblockError(new IOException("Missing chunk size"));
-						return null;
-					}
 					if (chunkSize == 0) {
 						// final chunk of 0
 						consumeTrailer();
@@ -118,10 +114,6 @@ public final class ChunkedTransfer {
 			
 			private boolean needSize() {
 				int i = buf.get() & 0xFF;
-				/*
-				if (mime.getLogger().trace())
-					mime.getLogger().trace("Chunk size character: " + ((char)i)
-						+ " (" + i + "), so far size is: " + chunkSize);*/
 				if (chunkSizeChars == 8 && i == '\n') {
 					// already get the 8 characters
 					// end of line for chunk size
@@ -133,6 +125,12 @@ public final class ChunkedTransfer {
 				if (chunkSize < 0 && (i == '\r' || i == '\n'))
 					return true;
 				if (i == ';') {
+					if (chunkSize < 0) {
+						IOException error = new IOException("No chunk size before extension");
+						logger.error("Invalid chunked data", error);
+						onDone.unblockError(error);
+						return false;
+					}
 					if (logger.trace())
 						logger.trace("Start chunk extension");
 					chunkSizeDone = true;

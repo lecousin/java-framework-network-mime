@@ -1,4 +1,4 @@
-package net.lecousin.framework.network.mime;
+package net.lecousin.framework.network.mime.transfer;
 
 import java.io.File;
 import java.io.IOException;

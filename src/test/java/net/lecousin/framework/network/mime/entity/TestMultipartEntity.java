@@ -18,6 +18,7 @@ import net.lecousin.framework.io.IOFromInputStream;
 import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
 import net.lecousin.framework.io.buffering.SimpleBufferedReadable;
+import net.lecousin.framework.network.mime.MimeException;
 import net.lecousin.framework.network.mime.MimeUtil;
 import net.lecousin.framework.network.mime.header.InternetAddressListHeaderValue;
 import net.lecousin.framework.network.mime.header.MimeHeaders;
@@ -144,6 +145,48 @@ public class TestMultipartEntity extends LCCoreAbstractTest {
 		
 		Assert.assertNull(eml.getHeaders().getContentLength());
 		eml.getHeaders().appendTo(new CharArrayStringBuffer());
+	}
+	
+	@Test
+	public void testCreateInvalid() {
+		try {
+			new MultipartEntity(null, new MimeHeaders());
+			throw new AssertionError();
+		} catch (MimeException e) {}
+		try {
+			new MultipartEntity(null, new MimeHeaders().setRawValue("Content-Type", "multipart/related"));
+			throw new AssertionError();
+		} catch (MimeException e) {}
+		try {
+			new MultipartEntity("related").new Parser(null);
+			throw new AssertionError();
+		} catch (Exception e) {}
+	}
+	
+	@Test
+	public void testParserErrors() throws Exception {
+		try {
+			MultipartEntity entity = new MultipartEntity("related");
+			entity.new Parser(null);
+			throw new AssertionError();
+		} catch (Exception e) {}
+
+		try {
+			MultipartEntity entity = new MultipartEntity("related");
+			MultipartEntity.Parser parser = entity.new Parser(DefaultMimeEntityFactory.getInstance());
+			parser.end().blockThrow(0);
+			throw new AssertionError();
+		} catch (IOException e) {}
+	}
+	
+	@Test
+	public void testParserOnlyFinal() throws Exception {
+		MultipartEntity entity = new MultipartEntity(new byte[] { '.', '/', '.' }, "related");
+		MultipartEntity.Parser parser = entity.new Parser(DefaultMimeEntityFactory.getInstance());
+		parser.consume(ByteBuffer.wrap(new byte[] { '\r', '\n', '-', '-', '.', '/', '.', '-', '-', '\r', '\n', '1', '2' })).blockThrow(0);
+		parser.consume(ByteBuffer.wrap(new byte[] { '3', '4' })).blockThrow(0);
+		parser.end().blockThrow(0);
+		Assert.assertEquals(0, entity.getParts().size());
 	}
 
 }

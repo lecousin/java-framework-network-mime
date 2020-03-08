@@ -1,4 +1,4 @@
-package net.lecousin.framework.network.mime;
+package net.lecousin.framework.network.mime.transfer;
 
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
