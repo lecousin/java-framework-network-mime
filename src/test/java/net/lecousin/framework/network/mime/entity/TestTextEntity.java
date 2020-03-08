@@ -6,11 +6,12 @@ import java.nio.charset.StandardCharsets;
 import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.concurrent.threads.Task;
 import net.lecousin.framework.core.test.LCCoreAbstractTest;
-import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
+import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
 import net.lecousin.framework.network.mime.header.InternetAddressHeaderValue;
 import net.lecousin.framework.network.mime.header.InternetAddressListHeaderValue;
+import net.lecousin.framework.network.mime.header.MimeHeaders;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -81,6 +82,14 @@ public class TestTextEntity extends LCCoreAbstractTest {
 		EntityTestUtil.testBodyRangeProducer(() -> {
 			return new TextEntity(text, StandardCharsets.UTF_8, "text/test");
 		});
+	}
+	
+	@Test
+	public void test() throws Exception {
+		TextEntity entity = new TextEntity(null, new MimeHeaders());
+		entity.setCharset(StandardCharsets.UTF_8);
+		Assert.assertEquals("text/plain", entity.getHeaders().getContentTypeValue());
+		Assert.assertEquals("utf-8", entity.getHeaders().getContentType().getParameterIgnoreCase("charset").toLowerCase());
 	}
 
 }

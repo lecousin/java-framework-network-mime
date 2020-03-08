@@ -66,16 +66,16 @@ public class TextEntity extends MimeEntity {
 	
 	/** Set the charset to encode the text. */
 	public void setCharset(Charset charset) throws MimeException {
-		if (charset.equals(this.charset)) return;
-		this.charset = charset;
 		ParameterizedHeaderValue type = headers.getContentType();
 		if (type == null) {
 			type = new ParameterizedHeaderValue("text/plain", CHARSET_PARAMETER, charset.name());
 			headers.add(MimeHeaders.CONTENT_TYPE, type);
 		} else {
+			if (charset.equals(this.charset)) return;
 			type.setParameterIgnoreCase(CHARSET_PARAMETER, charset.name());
 			headers.set(MimeHeaders.CONTENT_TYPE, type);
 		}
+		this.charset = charset;
 	}
 	
 	@Override

@@ -1,11 +1,15 @@
 package net.lecousin.framework.network.mime;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.List;
 
+import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.core.test.LCCoreAbstractTest;
+import net.lecousin.framework.io.data.ByteArray;
 import net.lecousin.framework.network.mime.header.MimeHeader;
 import net.lecousin.framework.network.mime.header.MimeHeaders;
+import net.lecousin.framework.network.mime.header.MimeHeadersContainer;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValues;
 import net.lecousin.framework.network.mime.header.parser.Address;
@@ -159,6 +163,68 @@ public class TestHeader extends LCCoreAbstractTest {
 		Assert.assertEquals(1, tokens.size());
 		Assert.assertEquals(Word.class, tokens.get(0).getClass());
 		Assert.assertEquals("hel5lo", ((Word)tokens.get(0)).getContent());
+	}
+	
+	@Test
+	public void testMimeHeaders() {
+		MimeHeaders headers = new MimeHeaders();
+		headers.setRawValue("test", "hello");
+		Assert.assertNull(headers.getFirstLongValue("test"));
+		Assert.assertTrue(headers.has("test"));
+		Assert.assertFalse(headers.has("test2"));
+		Assert.assertNull(headers.getContentTypeValue());
+		headers.setRawValue("Content-Type", "=?toto?=");
+		Assert.assertNull(headers.getContentTypeValue());
+		
+		AsyncSupplier<Boolean, MimeException> consume = headers.createConsumer(10).consume(new ByteArray("X-Header: x-value\r\n\r\n".getBytes(StandardCharsets.US_ASCII)));
+		consume.block(0);
+		Assert.assertTrue(consume.hasError());
+		
+		consume = headers.createConsumer(10).consume(new ByteArray("X-Header-TooLong: x-value\r\n\r\n".getBytes(StandardCharsets.US_ASCII)));
+		consume.block(0);
+		Assert.assertTrue(consume.hasError());
+		
+		consume = headers.createConsumer(10).consume(new ByteArray("X: y\r\nZ: zzzzzzzzzz\r\n\r\n".getBytes(StandardCharsets.US_ASCII)));
+		consume.block(0);
+		Assert.assertTrue(consume.hasError());
+		
+		consume = headers.createConsumer(10).consume(new ByteArray("X: abcde\r\n\r\n".getBytes(StandardCharsets.US_ASCII)));
+		consume.block(0);
+		Assert.assertTrue(consume.hasError());
+		
+		consume = headers.createConsumer(100).consume(new ByteArray(" X: abcde\r\n\r\n".getBytes(StandardCharsets.US_ASCII)));
+		consume.block(0);
+		Assert.assertTrue(consume.hasError());
+		
+		consume = headers.createConsumer(100).consume(new ByteArray("123465789\r\n\r\n".getBytes(StandardCharsets.US_ASCII)));
+		consume.block(0);
+		Assert.assertTrue(consume.hasError());
+	}
+	
+	public static class Container implements MimeHeadersContainer<Container> {
+		
+		private MimeHeaders headers = new MimeHeaders();
+		
+		@Override
+		public MimeHeaders getHeaders() {
+			return headers;
+		}
+	}
+	
+	@Test
+	public void testHeadersContainer() throws Exception {
+		Container c = new Container();
+		c.addHeader(new MimeHeader("a", "b"));
+		c.addHeader("c", "d");
+		c.addHeader("e", new ParameterizedHeaderValue("f", "g", "h"));
+		Assert.assertEquals("b", c.getHeaders().getFirstRawValue("a"));
+		Assert.assertEquals("d", c.getHeaders().getFirstRawValue("c"));
+		c.setHeader("c", "1");
+		Assert.assertEquals("1", c.getHeaders().getFirstRawValue("c"));
+		c.setHeader(new MimeHeader("c", "2"));
+		Assert.assertEquals("2", c.getHeaders().getFirstRawValue("c"));
+		c.setHeader("c", new ParameterizedHeaderValue("A", "B", "C"));
+		Assert.assertEquals("A", c.getHeaders().getFirstValue("c", ParameterizedHeaderValue.class).getMainValue());
 	}
 	
 }

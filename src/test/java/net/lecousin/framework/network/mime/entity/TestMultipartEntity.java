@@ -53,6 +53,7 @@ public class TestMultipartEntity extends LCCoreAbstractTest {
 		entity.setPartFactory(DefaultMimeEntityFactory.getInstance());
 		producer.toConsumer(entity.createConsumer(null), "Parse MIME", Task.Priority.NORMAL).blockThrow(0);
 		Assert.assertEquals(5, entity.getParts().size());
+		Assert.assertEquals(3, entity.getPartsOfType(BinaryEntity.class).size());
 		for (MimeEntity p : entity.getParts()) {
 			ParameterizedHeaderValue dispo = p.getHeaders().getFirstValue(MimeHeaders.CONTENT_DISPOSITION, ParameterizedHeaderValue.class);
 			Assert.assertEquals("form-data", dispo.getMainValue());

@@ -13,7 +13,6 @@ import net.lecousin.framework.concurrent.util.AsyncConsumerOutput;
 import net.lecousin.framework.concurrent.util.AsyncProducer;
 import net.lecousin.framework.concurrent.util.LinkedAsyncProducer;
 import net.lecousin.framework.concurrent.util.PartialAsyncConsumer;
-import net.lecousin.framework.exception.NoException;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.buffering.IOInMemoryOrFile;
 import net.lecousin.framework.io.data.ByteBufferAsBytes;
@@ -126,15 +125,16 @@ public abstract class MimeEntity implements MimeHeadersContainer<MimeEntity> {
 		protected AsyncSupplier<Boolean, IOException> consumeData(ByteBuffer data) {
 			if (headersConsumer != null) {
 				AsyncSupplier<Boolean, MimeException> consume = headersConsumer.consume(ByteBufferAsBytes.create(data, false));
-				if (consume.isDone()) {
-					if (consume.hasError())
-						return new AsyncSupplier<>(null, IO.error(consume.getError()));
-					if (!consume.getResult().booleanValue()) {
-						return new AsyncSupplier<>(Boolean.FALSE, null);
-					}
-					try { endOfHeaders(); }
-					catch (IOException e) { return new AsyncSupplier<>(null, e); }
-				} else {
+				// headers consumer is synchronized
+				/* if (consume.isDone()) { */
+				if (consume.hasError())
+					return new AsyncSupplier<>(null, IO.error(consume.getError()));
+				if (!consume.getResult().booleanValue()) {
+					return new AsyncSupplier<>(Boolean.FALSE, null);
+				}
+				try { endOfHeaders(); }
+				catch (IOException e) { return new AsyncSupplier<>(null, e); }
+				/* } else {
 					AsyncSupplier<Boolean, IOException> result = new AsyncSupplier<>();
 					consume.thenStart(Task.cpu("Consume MIME Entity", (Task<Void, NoException> t) -> {
 						if (!consume.getResult().booleanValue()) {
@@ -150,7 +150,7 @@ public abstract class MimeEntity implements MimeHeadersContainer<MimeEntity> {
 						return null;
 					}), result, IO::error);
 					return result;
-				}
+				}*/
 			}
 			return consumeBody(data);
 		}
