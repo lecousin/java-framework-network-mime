@@ -22,7 +22,7 @@ public final class IdentityTransfer {
 	public static final String TRANSFER_NAME = "identity";
 	
 	/** Identity transfer receiver. */
-	public static class Receiver  implements PartialAsyncConsumer<ByteBuffer, IOException> {
+	public static class Receiver implements PartialAsyncConsumer<ByteBuffer, IOException> {
 
 		/** Constructor. */
 		public Receiver(MimeHeaders headers, AsyncConsumer<ByteBuffer, IOException> consumer) throws IOException {

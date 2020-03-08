@@ -110,8 +110,8 @@ public class BinaryEntity extends MimeEntity implements AutoCloseable, AsyncClos
 	}
 
 	@Override
-	public AsyncConsumer<ByteBuffer, IOException> createConsumer() {
-		return new Consumer();
+	public AsyncConsumer<ByteBuffer, IOException> createConsumer(Long size) {
+		return new Consumer(size);
 	}
 	
 	/** Consume data into an OutputToInput. */
@@ -122,10 +122,15 @@ public class BinaryEntity extends MimeEntity implements AutoCloseable, AsyncClos
 		}
 		
 		/** Constructor. */
-		public Consumer() {
+		public Consumer(Long size) {
 			if (!(content instanceof IO.OutputToInput)) {
-				IOInMemoryOrFile io = new IOInMemoryOrFile(128 * 1024, Priority.NORMAL, "BinaryEntity");
-				content = new OutputToInput(io, io.getSourceDescription());
+				if (size == null || size.longValue() >= 128 * 1024) {
+					IOInMemoryOrFile io = new IOInMemoryOrFile(128 * 1024, Priority.NORMAL, "BinaryEntity");
+					content = new OutputToInput(io, io.getSourceDescription());
+				} else {
+					ByteArrayIO io = new ByteArrayIO(ByteArrayCache.getInstance().get(size.intValue(), true), "BinaryEntity");
+					content = new OutputToInput(io, io.getSourceDescription());
+				}
 			}
 		}
 		

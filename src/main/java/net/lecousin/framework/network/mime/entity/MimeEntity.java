@@ -97,8 +97,10 @@ public abstract class MimeEntity implements MimeHeadersContainer<MimeEntity> {
 		return result;
 	}
 	
-	/** Create a consumer of data to parse the body. */
-	public abstract AsyncConsumer<ByteBuffer, IOException> createConsumer();
+	/** Create a consumer of data to parse the body.
+	 * @param size size of data to consume if known, null if unknown
+	 */
+	public abstract AsyncConsumer<ByteBuffer, IOException> createConsumer(Long size);
 	
 	/** Parse the given input as a MimeEntity. */
 	public static AsyncSupplier<MimeEntity, IOException> parse(IO.Readable input, MimeEntityFactory entityFactory) {
@@ -163,7 +165,7 @@ public abstract class MimeEntity implements MimeHeadersContainer<MimeEntity> {
 			}
 			if (entity instanceof MultipartEntity)
 				((MultipartEntity)entity).setPartFactory(entityFactory);
-			bodyConsumer = entity.createConsumer();
+			bodyConsumer = entity.createConsumer(headers.getContentLength());
 			headers = null;
 			headersConsumer = null;
 		}

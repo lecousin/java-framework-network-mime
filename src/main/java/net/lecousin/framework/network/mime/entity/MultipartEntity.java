@@ -231,7 +231,7 @@ public class MultipartEntity extends MimeEntity {
 	}
 	
 	@Override
-	public AsyncConsumer<ByteBuffer, IOException> createConsumer() {
+	public AsyncConsumer<ByteBuffer, IOException> createConsumer(Long size) {
 		return new Parser(partFactory);
 	}
 	

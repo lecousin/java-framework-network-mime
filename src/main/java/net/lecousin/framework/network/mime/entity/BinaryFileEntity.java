@@ -90,7 +90,7 @@ public class BinaryFileEntity extends MimeEntity implements AutoCloseable, Async
 	}
 	
 	@Override
-	public AsyncConsumer<ByteBuffer, IOException> createConsumer() {
+	public AsyncConsumer<ByteBuffer, IOException> createConsumer(Long size) {
 		return new Consumer();
 	}
 	

@@ -32,7 +32,7 @@ public class EmptyEntity extends MimeEntity {
 	}
 
 	@Override
-	public AsyncConsumer<ByteBuffer, IOException> createConsumer() {
+	public AsyncConsumer<ByteBuffer, IOException> createConsumer(Long size) {
 		return null;
 	}
 	

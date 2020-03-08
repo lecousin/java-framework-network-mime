@@ -190,8 +190,8 @@ public class FormUrlEncodedEntity extends MimeEntity {
 	}
 	
 	@Override
-	public AsyncConsumer<ByteBuffer, IOException> createConsumer() {
-		return new Parser(1024);
+	public AsyncConsumer<ByteBuffer, IOException> createConsumer(Long size) {
+		return new Parser(size == null ? 1024 : size.longValue() < 65536 ? size.intValue() : 65536);
 	}
 	
 	/** Parser for body. */

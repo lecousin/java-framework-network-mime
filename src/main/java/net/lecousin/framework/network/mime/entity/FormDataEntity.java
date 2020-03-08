@@ -180,7 +180,7 @@ public class FormDataEntity extends MultipartEntity implements AutoCloseable, As
 		}
 		
 		@Override
-		public AsyncConsumer<ByteBuffer, IOException> createConsumer() {
+		public AsyncConsumer<ByteBuffer, IOException> createConsumer(Long size) {
 			return ContentDecoderFactory.createDecoder(
 				CharacterDecoder.get(charset, 1024).<IOException>decodeConsumerToString(str -> value = str)
 					.convert(ByteArray::fromByteBuffer),

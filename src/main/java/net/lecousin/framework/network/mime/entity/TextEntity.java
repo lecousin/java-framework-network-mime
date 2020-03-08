@@ -112,8 +112,8 @@ public class TextEntity extends MimeEntity {
 	}
 	
 	@Override
-	public AsyncConsumer<ByteBuffer, IOException> createConsumer() {
-		return new Consumer(1024);
+	public AsyncConsumer<ByteBuffer, IOException> createConsumer(Long size) {
+		return new Consumer(size == null ? 1024 : size.longValue() < 65536 ? size.intValue() : 65536);
 	}
 	
 	/** Consumer to parse the body. */

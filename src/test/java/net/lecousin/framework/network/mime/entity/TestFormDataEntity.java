@@ -56,7 +56,7 @@ public class TestFormDataEntity extends LCCoreAbstractTest {
 		@SuppressWarnings("resource")
 		FormDataEntity parse = new FormDataEntity(form.getBoundary());
 		out.seekSync(SeekType.FROM_BEGINNING, 0);
-		out.createProducer(false).toConsumer(parse.createConsumer(), "Parse MIME", Task.Priority.NORMAL).blockThrow(0);
+		out.createProducer(false).toConsumer(parse.createConsumer(null), "Parse MIME", Task.Priority.NORMAL).blockThrow(0);
 		Assert.assertEquals(2, parse.getFields().size());
 		Assert.assertEquals("1", parse.getFieldValue("test"));
 		Assert.assertEquals("world", parse.getFieldValue("hello"));

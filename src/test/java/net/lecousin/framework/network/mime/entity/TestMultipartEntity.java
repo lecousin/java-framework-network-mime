@@ -51,7 +51,7 @@ public class TestMultipartEntity extends LCCoreAbstractTest {
 	private static void testParseMultipart(AsyncProducer<ByteBuffer, IOException> producer) throws Exception {
 		MultipartEntity entity = new MultipartEntity("---------------------------114772229410704779042051621609".getBytes(), "form-data");
 		entity.setPartFactory(DefaultMimeEntityFactory.getInstance());
-		producer.toConsumer(entity.createConsumer(), "Parse MIME", Task.Priority.NORMAL).blockThrow(0);
+		producer.toConsumer(entity.createConsumer(null), "Parse MIME", Task.Priority.NORMAL).blockThrow(0);
 		Assert.assertEquals(5, entity.getParts().size());
 		for (MimeEntity p : entity.getParts()) {
 			ParameterizedHeaderValue dispo = p.getHeaders().getFirstValue(MimeHeaders.CONTENT_DISPOSITION, ParameterizedHeaderValue.class);
