@@ -199,9 +199,9 @@ public class MimeHeaders {
 	
 	
 	/** Generate this MimeHeaders into a byte array string buffer. */
-	public ByteArrayStringIso8859Buffer generateString() {
-		ByteArrayStringIso8859Buffer s = new ByteArrayStringIso8859Buffer(new ByteArrayStringIso8859(512));
-		s.setNewArrayStringCapacity(512);
+	public ByteArrayStringIso8859Buffer generateString(int bufferSize) {
+		ByteArrayStringIso8859Buffer s = new ByteArrayStringIso8859Buffer(new ByteArrayStringIso8859(bufferSize));
+		s.setNewArrayStringCapacity(bufferSize);
 		generateString(s);
 		return s;
 	}

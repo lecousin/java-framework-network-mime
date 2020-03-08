@@ -59,7 +59,7 @@ public class FormDataEntity extends MultipartEntity implements AutoCloseable, As
 			ParameterizedHeaderValue dispo = headers.getFirstValue(MimeHeaders.CONTENT_DISPOSITION, ParameterizedHeaderValue.class);
 			if (dispo == null)
 				throw new MimeException("Missing header Content-Disposition for a form-data entity, received headers:\r\n"
-					+ headers.generateString().asString());
+					+ headers.generateString(512).asString());
 			if (!MULTIPART_SUB_TYPE.equals(dispo.getMainValue()))
 				throw new MimeException("Invalid Content-Disposition: " + dispo.getMainValue() + ", expected is form-data");
 			String fieldName = dispo.getParameter("name");

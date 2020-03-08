@@ -1,25 +1,28 @@
 package net.lecousin.framework.network.mime.entity;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.URLDecoder;
-import java.net.URLEncoder;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
 import net.lecousin.framework.concurrent.async.Async;
 import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.concurrent.async.IAsync;
+import net.lecousin.framework.concurrent.threads.Task;
 import net.lecousin.framework.concurrent.util.AsyncConsumer;
 import net.lecousin.framework.concurrent.util.AsyncProducer;
+import net.lecousin.framework.encoding.URLEncoding;
 import net.lecousin.framework.encoding.charset.CharacterDecoder;
 import net.lecousin.framework.io.IO;
 import net.lecousin.framework.io.data.ByteArray;
+import net.lecousin.framework.io.data.BytesFromIso8859String;
 import net.lecousin.framework.io.data.Chars;
+import net.lecousin.framework.io.data.CharsFromString;
 import net.lecousin.framework.math.RangeLong;
+import net.lecousin.framework.memory.ByteArrayCache;
 import net.lecousin.framework.network.mime.header.MimeHeaders;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.util.Pair;
@@ -69,19 +72,111 @@ public class FormUrlEncodedEntity extends MimeEntity {
 
 	@Override
 	public AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> createBodyProducer() {
-		StringBuilder s = new StringBuilder(1024);
-		for (Pair<String, String> param : parameters) {
-			if (s.length() > 0) s.append('&');
-			try {
-				s.append(URLEncoder.encode(param.getValue1(), StandardCharsets.UTF_8.name()));
-				s.append('=');
-				s.append(URLEncoder.encode(param.getValue2(), StandardCharsets.UTF_8.name()));
-			} catch (UnsupportedEncodingException e) {
-				// should never happen
+		if (parameters.isEmpty())
+			return new AsyncSupplier<>(new Pair<>(Long.valueOf(0), new AsyncProducer.Empty<>()), null);
+		AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> result = new AsyncSupplier<>();
+		// produce first buffer, if enough we know the size
+		BodyProducer producer = new BodyProducer();
+		Task.cpu("Produce form-url-encoded", Task.getCurrentPriority(), t -> {
+			ByteArray first = producer.nextBuffer();
+			if (producer.isDone()) {
+				result.unblockSuccess(new Pair<>(
+					Long.valueOf(first.remaining()),
+					new AsyncProducer.SingleData<>(first.toByteBuffer())));
+				return null;
 			}
+			producer.back(first);
+			result.unblockSuccess(new Pair<>(null, producer));
+			return null;
+		}).start();
+		return result;
+	}
+	
+	private class BodyProducer implements AsyncProducer<ByteBuffer, IOException> {
+		
+		private ByteArray back;
+		private Iterator<Pair<String, String>> itParam = parameters.iterator();
+		private boolean firstParam = true;
+		private Pair<String, String> param;
+		private int namePos = 0;
+		private int valuePos = 0;
+		private boolean equalsDone = false;
+		
+		public BodyProducer() {
+			param = itParam.next();
 		}
-		byte[] body = s.toString().getBytes(StandardCharsets.UTF_8);
-		return new AsyncSupplier<>(new Pair<>(Long.valueOf(body.length), new AsyncProducer.SingleData<>(ByteBuffer.wrap(body))), null);
+		
+		public void back(ByteArray b) {
+			back = b;
+		}
+		
+		public ByteArray nextBuffer() {
+			ByteArray.Writable b = new ByteArray.Writable(ByteArrayCache.getInstance().get(2048, true), true);
+			do {
+				if (!equalsDone) {
+					String name = param.getValue1();
+					if (namePos < name.length()) {
+						CharsFromString chars = new CharsFromString(name);
+						chars.setPosition(namePos);
+						URLEncoding.encode(chars, b, false, true);
+						namePos = chars.position();
+						if (namePos < name.length())
+							break;
+					}
+					if (b.hasRemaining()) {
+						b.put((byte)'=');
+						equalsDone = true;
+					}
+				} else {
+					String value = param.getValue2();
+					if (valuePos < value.length()) {
+						CharsFromString chars = new CharsFromString(value);
+						chars.setPosition(valuePos);
+						URLEncoding.encode(chars, b, false, true);
+						valuePos = chars.position();
+						if (valuePos < value.length())
+							break;
+					}
+					if (!itParam.hasNext()) {
+						firstParam = false;
+						break;
+					}
+					if (b.hasRemaining()) {
+						b.put((byte)'&');
+						firstParam = false;
+						param = itParam.next();
+						namePos = 0;
+						valuePos = 0;
+						equalsDone = false;
+					}
+				}
+			} while (b.hasRemaining());
+			b.flip();
+			return b;
+		}
+		
+		public boolean isDone() {
+			return !firstParam && !itParam.hasNext() && equalsDone && valuePos == param.getValue2().length();
+		}
+		
+		@Override
+		public AsyncSupplier<ByteBuffer, IOException> produce() {
+			if (back != null) {
+				ByteArray b = back;
+				back = null;
+				return new AsyncSupplier<>(b.toByteBuffer(), null);
+			}
+			if (isDone())
+				return new AsyncSupplier<>(null, null);
+			AsyncSupplier<ByteBuffer, IOException> result = new AsyncSupplier<>();
+			Task.cpu("Produce form-url-encoded", Task.getCurrentPriority(), t -> {
+				ByteArray b = nextBuffer();
+				result.unblockSuccess(b.toByteBuffer());
+				return null;
+			}).start();
+			return result;
+		}
+		
 	}
 	
 	@Override
@@ -170,14 +265,10 @@ public class FormUrlEncodedEntity extends MimeEntity {
 		}
 		
 		private void addEncodedParameter(StringBuilder name, StringBuilder value) {
-			try {
-				parameters.add(new Pair<>(
-					URLDecoder.decode(name.toString(), StandardCharsets.UTF_8.name()),
-					URLDecoder.decode(value.toString(), StandardCharsets.UTF_8.name())
-				));
-			} catch (UnsupportedEncodingException e) {
-				// should never happen
-			}
+			parameters.add(new Pair<>(
+				URLEncoding.decode(new BytesFromIso8859String(name)).asString(),
+				URLEncoding.decode(new BytesFromIso8859String(value)).asString()
+			));
 		}
 		
 		@Override

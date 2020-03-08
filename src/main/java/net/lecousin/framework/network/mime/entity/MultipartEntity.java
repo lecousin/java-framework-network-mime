@@ -182,7 +182,7 @@ public class MultipartEntity extends MimeEntity {
 			}
 			if (!headersSent) {
 				headersSent = true;
-				return new AsyncSupplier<>(ByteBuffer.wrap(currentEntity.getHeaders().generateString().toIso8859Bytes()), null);
+				return new AsyncSupplier<>(currentEntity.getHeaders().generateString(4096).asByteBuffer(), null);
 			}
 			if (bodyProducer == null) {
 				AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> body =

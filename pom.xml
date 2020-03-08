@@ -50,7 +50,7 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <sonar.test.exclusions>**/src/test/**/*</sonar.test.exclusions>
-    <core.version>0.20.0</core.version>
+    <core.version>0.20.1</core.version>
     <network.core.version>0.7.0</network.core.version>
     <compression.version>0.1.10</compression.version>
   </properties>

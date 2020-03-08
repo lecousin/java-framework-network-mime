@@ -2,6 +2,7 @@ package net.lecousin.framework.network.mime.transfer;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -37,7 +38,7 @@ public final class MimeTransfer {
 		else
 			bodySize = -1;
 		AsyncConsumer<ByteBuffer, IOException> transfer = createTransfer(headers, bodySize, trailerSupplier, sender);
-		IAsync<IOException> sendHeaders = sender.consume(ByteBuffer.wrap(headers.generateString().toIso8859Bytes()));
+		IAsync<IOException> sendHeaders = sender.push(Arrays.asList(headers.generateString(4096).asByteBuffers()));
 		Priority prio = Task.getCurrentPriority();
 		if (bodySize == 0)
 			return sendHeaders;
@@ -60,8 +61,7 @@ public final class MimeTransfer {
 			Long size = body.getResult().getValue1();
 			AsyncConsumer<ByteBuffer, IOException> transfer =
 				createTransfer(entity.getHeaders(), size == null ? -1 : size.longValue(), trailerSupplier, sender);
-			IAsync<IOException> sendHeaders =
-				sender.consume(ByteBuffer.wrap(entity.getHeaders().generateString().toIso8859Bytes()));
+			IAsync<IOException> sendHeaders = sender.push(Arrays.asList(entity.getHeaders().generateString(4096).asByteBuffers()));
 			sendHeaders.thenStart("Trasnfer MIME body", prio, () -> {
 				body.getResult().getValue2().toConsumer(transfer, "Transfer MIME body", prio).onDone(result);
 			}, result);

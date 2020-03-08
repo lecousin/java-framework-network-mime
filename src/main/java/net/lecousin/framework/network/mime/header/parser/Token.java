@@ -29,7 +29,7 @@ public interface Token {
 		for (Token token : tokens)
 			token.asText(s);
 	}
-
+	
 	/** Convert this token into corresponding string. */
 	default String asString() {
 		CharArrayString s = new CharArrayString(textLength());

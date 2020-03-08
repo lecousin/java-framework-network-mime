@@ -29,5 +29,5 @@ public class Comment implements Token {
 		Token.asText(tokens, s);
 		s.append(')');
 	}
-	
+
 }

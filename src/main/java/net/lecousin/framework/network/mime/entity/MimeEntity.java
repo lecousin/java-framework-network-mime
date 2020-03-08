@@ -77,7 +77,7 @@ public abstract class MimeEntity implements MimeHeadersContainer<MimeEntity> {
 	/** Write the headers and body of this entity into an OutputToInput. */
 	public AsyncSupplier<IO.OutputToInput, IOException> writeEntity() {
 		AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> body = createBodyProducer();
-		ByteBuffer headersBytes = ByteBuffer.wrap(headers.generateString().toIso8859Bytes());
+		ByteBuffer headersBytes = headers.generateString(4096).asByteBuffer();
 		AsyncSupplier<IO.OutputToInput, IOException> result = new AsyncSupplier<>();
 		Priority prio = Task.getCurrentPriority();
 		body.onDone(pair -> {
@@ -210,7 +210,7 @@ public abstract class MimeEntity implements MimeHeadersContainer<MimeEntity> {
 				return output;
 			}
 			output.error(new EOFException("Unexpected end of MIME message while reading headers. Read so far:\r\n"
-				+ headers.generateString().asString()));
+				+ headers.generateString(1024).asString()));
 			return output;
 		}
 		
