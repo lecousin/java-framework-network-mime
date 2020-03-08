@@ -1,6 +1,7 @@
 package net.lecousin.framework.network.mime.entity;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 
@@ -9,11 +10,12 @@ import javax.mail.internet.MimeMultipart;
 import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.concurrent.threads.Task;
 import net.lecousin.framework.concurrent.threads.Threading;
+import net.lecousin.framework.concurrent.util.AsyncProducer;
 import net.lecousin.framework.core.test.LCCoreAbstractTest;
+import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.IOAsInputStream;
 import net.lecousin.framework.io.IOFromInputStream;
 import net.lecousin.framework.io.IOUtil;
-import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
 import net.lecousin.framework.io.buffering.SimpleBufferedReadable;
 import net.lecousin.framework.network.mime.MimeUtil;
@@ -38,11 +40,18 @@ public class TestMultipartEntity extends LCCoreAbstractTest {
 	}
 	
 	private void testParseMultipart(String filename) throws Exception {
+		try (IOFromInputStream body = new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.Priority.NORMAL)) {
+			testParseMultipart(body.createProducer(false));
+		}
+		try (IOFromInputStream body = new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.Priority.NORMAL)) {
+			testParseMultipart(body.createProducer(8, false, false));
+		}
+	}
+	
+	private static void testParseMultipart(AsyncProducer<ByteBuffer, IOException> producer) throws Exception {
 		MultipartEntity entity = new MultipartEntity("---------------------------114772229410704779042051621609".getBytes(), "form-data");
 		entity.setPartFactory(DefaultMimeEntityFactory.getInstance());
-		IOFromInputStream body = new IOFromInputStream(this.getClass().getClassLoader().getResourceAsStream(filename), filename, Threading.getCPUTaskManager(), Task.Priority.NORMAL);
-		body.createProducer(false).toConsumer(entity.createConsumer(), "Parse MIME", Task.Priority.NORMAL).blockThrow(0);
-		body.close();
+		producer.toConsumer(entity.createConsumer(), "Parse MIME", Task.Priority.NORMAL).blockThrow(0);
 		Assert.assertEquals(5, entity.getParts().size());
 		for (MimeEntity p : entity.getParts()) {
 			ParameterizedHeaderValue dispo = p.getHeaders().getFirstValue(MimeHeaders.CONTENT_DISPOSITION, ParameterizedHeaderValue.class);

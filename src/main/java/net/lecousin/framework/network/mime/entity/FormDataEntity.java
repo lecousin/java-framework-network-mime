@@ -51,6 +51,11 @@ public class FormDataEntity extends MultipartEntity implements AutoCloseable, As
 		partFactory = new FormDataPartFactory();
 	}
 	
+	@Override
+	public void setPartFactory(MimeEntityFactory partFactory) {
+		// not allowed, ignore it
+	}
+	
 	/** Factory to create PartField or PartFile depending on headers. */
 	public static class FormDataPartFactory implements MimeEntityFactory {
 

@@ -9,13 +9,16 @@ import net.lecousin.compression.gzip.GZipWritable;
 import net.lecousin.framework.concurrent.async.AsyncSupplier;
 import net.lecousin.framework.concurrent.threads.Task;
 import net.lecousin.framework.core.test.LCCoreAbstractTest;
-import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.IO.Seekable.SeekType;
+import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
+import net.lecousin.framework.math.RangeLong;
+import net.lecousin.framework.network.mime.entity.FormDataEntity.FormDataPartFactory;
 import net.lecousin.framework.network.mime.entity.FormDataEntity.PartFile;
 import net.lecousin.framework.network.mime.header.MimeHeaders;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
+import net.lecousin.framework.util.Pair;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -25,6 +28,10 @@ public class TestFormDataEntity extends LCCoreAbstractTest {
 	@Test
 	public void testFormData() throws Exception {
 		FormDataEntity form = new FormDataEntity();
+		
+		Assert.assertFalse(form.canProduceBodyRange());
+		Assert.assertNull(form.createBodyRange(new RangeLong(0L, 1L)));
+		
 		form.addField("test", "1", StandardCharsets.US_ASCII);
 		form.addFile("myfile", "test.html", new ParameterizedHeaderValue("text/html", "charset", "utf-8"), new ByteArrayIO("<html></html>".getBytes(StandardCharsets.UTF_8), "test"));
 		ByteArrayIO gz = new ByteArrayIO(1024, "test");
@@ -70,6 +77,44 @@ public class TestFormDataEntity extends LCCoreAbstractTest {
 		out.close();
 		gzip.close();
 		gz.close();
+	}
+	
+	@Test
+	public void testOneThousandFields() throws Exception {
+		try (FormDataEntity form = new FormDataEntity()) {
+			for (int i = 1; i <= 1000; ++i)
+				form.addField("field" + i, "Value" + i, StandardCharsets.US_ASCII);
+			try (FormDataEntity form2 = EntityTestUtil.generateAndParse(form)) {
+				Assert.assertTrue(form2.getPartFactory() instanceof FormDataPartFactory);
+				Assert.assertEquals(1000, form2.getFields().size());
+				int index = 1;
+				for (Pair<String, String> field : form2.getFields()) {
+					Assert.assertEquals("field" + index, field.getValue1());
+					Assert.assertEquals("Value" + index, field.getValue2());
+					index++;
+				}
+			}
+		}
+	}
+	
+	@Test
+	public void testLongField() throws Exception {
+		StringBuilder s = new StringBuilder();
+		for (int i = 0; i < 100; ++i)
+			s.append("This is a very very long name for a field...");
+		String name = s.toString();
+		s = new StringBuilder();
+		for (int i = 0; i < 100; ++i)
+			s.append("it has also a very very long value!");
+		String value = s.toString();
+		try (FormDataEntity form = new FormDataEntity()) {
+			form.addField(name, value, StandardCharsets.US_ASCII);
+			try (FormDataEntity form2 = EntityTestUtil.generateAndParse(form)) {
+				Assert.assertEquals(1, form2.getFields().size());
+				Assert.assertEquals(name, form2.getFields().get(0).getValue1());
+				Assert.assertEquals(value, form2.getFields().get(0).getValue2());
+			}
+		}
 	}
 
 }

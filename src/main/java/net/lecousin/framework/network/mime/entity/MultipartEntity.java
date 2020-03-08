@@ -319,7 +319,7 @@ public class MultipartEntity extends MimeEntity {
 				} while (found == null && boundPos == 0 && data.hasRemaining());
 				if (found == null) {
 					LinkedList<ByteBuffer> buffers = new LinkedList<>();
-					if (boundPos > 0)
+					if (boundPos > 0 && boundaryPos <= boundPos)
 						addMissedBuffers(boundPos, wasFinal, buffers);
 					int end = data.position() - boundaryPos;
 					if (!data.hasRemaining()) {

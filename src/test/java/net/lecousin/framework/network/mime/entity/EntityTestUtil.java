@@ -24,12 +24,13 @@ public class EntityTestUtil {
 	@SuppressWarnings("unchecked")
 	public static <T extends MimeEntity> T generateAndParse(T source) throws Exception {
 		// generate
-		IO.Readable io = source.writeEntity().blockResult(0);
-		// parse
-		MimeEntity result = MimeEntity.parse(io, DefaultMimeEntityFactory.getInstance()).blockResult(0);
-		// check type
-		Assert.assertEquals(source.getClass(), result.getClass());
-		return (T)result;
+		try (IO.Readable io = source.writeEntity().blockResult(0)) {
+			// parse
+			MimeEntity result = MimeEntity.parse(io, DefaultMimeEntityFactory.getInstance()).blockResult(0);
+			// check type
+			Assert.assertEquals(source.getClass(), result.getClass());
+			return (T)result;
+		}
 	}
 	
 	@SuppressWarnings("unchecked")
