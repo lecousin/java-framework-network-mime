@@ -222,6 +222,8 @@ public class MimeHeaders {
 		return new HeadersConsumer(maximumLength);
 	}
 	
+	private static final String ERROR_TOO_LONG = "Maximum header length reached";
+	
 	/** Consume bytes to parse headers. */
 	public class HeadersConsumer implements PartialAsyncConsumer<Bytes.Readable, MimeException> {
 		/** Constructor. */
@@ -230,12 +232,13 @@ public class MimeHeaders {
 		}
 		
 		/** Constructor. */
+		@SuppressWarnings("java:S3776") // complexity
 		public HeadersConsumer(int maximumLength) {
 			Logger logger = LCCore.getApplication().getLoggerFactory().getLogger(getClass());
 			newLineConsumer = data -> {
 				while (data.hasRemaining()) {
 					if (maximumLength != -1 && ++length > maximumLength)
-						throw new MimeException("Maximum header length reached");
+						throw new MimeException(ERROR_TOO_LONG);
 					byte b = data.get();
 					switch (b) {
 					case '\r': break;
@@ -276,7 +279,7 @@ public class MimeHeaders {
 			nameConsumer = data -> {
 				while (data.hasRemaining()) {
 					if (maximumLength != -1 && ++length > maximumLength)
-						throw new MimeException("Maximum header length reached");
+						throw new MimeException(ERROR_TOO_LONG);
 					byte b = data.get();
 					switch (b) {
 					case ':':
@@ -297,7 +300,7 @@ public class MimeHeaders {
 			valueConsumer = data -> {
 				while (data.hasRemaining()) {
 					if (maximumLength != -1 && ++length > maximumLength)
-						throw new MimeException("Maximum header length reached");
+						throw new MimeException(ERROR_TOO_LONG);
 					byte b = data.get();
 					switch (b) {
 					case '\r': break;

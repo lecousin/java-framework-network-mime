@@ -31,6 +31,7 @@ import net.lecousin.framework.network.mime.entity.MimeEntity;
 import net.lecousin.framework.network.mime.header.MimeHeader;
 import net.lecousin.framework.network.mime.header.MimeHeaders;
 import net.lecousin.framework.network.mime.transfer.ChunkedTransfer;
+import net.lecousin.framework.network.mime.transfer.IdentityTransfer;
 import net.lecousin.framework.network.mime.transfer.MimeTransfer;
 import net.lecousin.framework.network.server.TCPServer;
 import net.lecousin.framework.network.test.AbstractNetworkTest;
@@ -58,6 +59,7 @@ public class TestTransfer extends AbstractNetworkTest {
 		NetworkManager.get().getLogger().setLevel(Level.DEBUG);
 		NetworkManager.get().getDataLogger().setLevel(Level.INFO);
 		LCCore.getApplication().getLoggerFactory().getLogger(ChunkedTransfer.class).setLevel(Level.TRACE);
+		LCCore.getApplication().getLoggerFactory().getLogger(IdentityTransfer.class).setLevel(Level.TRACE);
 	}
 	
 	@AfterClass
@@ -107,6 +109,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	@Test
 	public void testIdentityTransferFromFile() throws Exception {
 		LCCore.getApplication().getLoggerFactory().getLogger("network-data").setLevel(Level.TRACE);
+		LCCore.getApplication().getLoggerFactory().getLogger(IdentityTransfer.class).setLevel(Level.DEBUG);
 		File file = File.createTempFile("test", "identitytransfer");
 		FileIO.WriteOnly out = new FileIO.WriteOnly(file, Task.Priority.NORMAL);
 		out.writeSync(ByteBuffer.wrap(data));
@@ -130,6 +133,14 @@ public class TestTransfer extends AbstractNetworkTest {
 		in.close();
 		file.delete();
 		body.close();
+	}
+	
+	@Test
+	public void testInvalidIdentity() throws Exception {
+		try {
+			new IdentityTransfer.Receiver(new MimeHeaders(), null);
+			throw new AssertionError();
+		} catch (IOException e) {}
 	}
 	
 	
@@ -183,6 +194,7 @@ public class TestTransfer extends AbstractNetworkTest {
 
 	@Test
 	public void testChunkedTransferFromFile() throws Exception {
+		LCCore.getApplication().getLoggerFactory().getLogger(ChunkedTransfer.class).setLevel(Level.DEBUG);
 		File file = File.createTempFile("test", "identitytransfer");
 		FileIO.WriteOnly out = new FileIO.WriteOnly(file, Task.Priority.NORMAL);
 		out.writeSync(ByteBuffer.wrap(data));

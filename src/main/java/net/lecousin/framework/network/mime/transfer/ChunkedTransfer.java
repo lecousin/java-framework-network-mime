@@ -230,9 +230,7 @@ public final class ChunkedTransfer {
 					}
 					IAsync<IOException> decode = consumer.consume(buf.duplicate().asReadOnlyBuffer());
 					buf.position(buf.limit());
-					decode.onDone(() -> {
-						onDone.unblockSuccess(Boolean.FALSE);
-					}, onDone, IO::error);
+					decode.onDone(() -> onDone.unblockSuccess(Boolean.FALSE), onDone, IO::error);
 				}
 			}
 			

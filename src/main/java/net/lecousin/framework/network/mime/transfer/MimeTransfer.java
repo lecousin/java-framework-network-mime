@@ -25,6 +25,8 @@ public final class MimeTransfer {
 
 	private MimeTransfer() { /* no instance. */ }
 	
+	private static final String TRANSFER_TASK_NAME = "Transfer MIME body";
+	
 	/** Transfer headers and given body (may be null) to the sender. */
 	public static IAsync<IOException> transfer(
 		MimeHeaders headers, IO.Readable body, Supplier<List<MimeHeader>> trailerSupplier, AsyncConsumer<ByteBuffer, IOException> sender
@@ -43,10 +45,10 @@ public final class MimeTransfer {
 		if (bodySize == 0)
 			return sendHeaders;
 		if (sendHeaders.isSuccessful())
-			return body.createProducer(false).toConsumer(transfer, "Transfer MIME body", prio);
+			return body.createProducer(false).toConsumer(transfer, TRANSFER_TASK_NAME, prio);
 		Async<IOException> result = new Async<>();
-		sendHeaders.thenStart("Transfer MIME body", prio,
-			() -> body.createProducer(false).toConsumer(transfer, "Transfer MIME body", prio).onDone(result), result);
+		sendHeaders.thenStart(TRANSFER_TASK_NAME, prio,
+			() -> body.createProducer(false).toConsumer(transfer, TRANSFER_TASK_NAME, prio).onDone(result), result);
 		return result;
 	}
 	
@@ -62,9 +64,8 @@ public final class MimeTransfer {
 			AsyncConsumer<ByteBuffer, IOException> transfer =
 				createTransfer(entity.getHeaders(), size == null ? -1 : size.longValue(), trailerSupplier, sender);
 			IAsync<IOException> sendHeaders = sender.push(Arrays.asList(entity.getHeaders().generateString(4096).asByteBuffers()));
-			sendHeaders.thenStart("Trasnfer MIME body", prio, () -> {
-				body.getResult().getValue2().toConsumer(transfer, "Transfer MIME body", prio).onDone(result);
-			}, result);
+			sendHeaders.thenStart(TRANSFER_TASK_NAME, prio, () ->
+				body.getResult().getValue2().toConsumer(transfer, TRANSFER_TASK_NAME, prio).onDone(result), result);
 		}, result);
 		return result;
 	}

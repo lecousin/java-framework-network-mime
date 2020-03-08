@@ -14,7 +14,9 @@ import net.lecousin.framework.io.IOUtil;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.ByteBuffersIO;
 import net.lecousin.framework.math.RangeLong;
+import net.lecousin.framework.network.mime.MimeException;
 import net.lecousin.framework.network.mime.entity.FormDataEntity.FormDataPartFactory;
+import net.lecousin.framework.network.mime.entity.FormDataEntity.PartField;
 import net.lecousin.framework.network.mime.entity.FormDataEntity.PartFile;
 import net.lecousin.framework.network.mime.header.MimeHeaders;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
@@ -41,7 +43,9 @@ public class TestFormDataEntity extends LCCoreAbstractTest {
 		gz.seekSync(SeekType.FROM_BEGINNING, 0);
 		PartFile f = form.addFile("encoded", "test.html.gz", new ParameterizedHeaderValue("text/html", "charset", "utf-8"), gz);
 		f.getHeaders().setRawValue(MimeHeaders.CONTENT_ENCODING, "gzip");
-		form.addField("hello", "world", StandardCharsets.UTF_8);
+		PartField pf = form.addField("hello", "world", StandardCharsets.UTF_8);
+		Assert.assertFalse(pf.canProduceBodyRange());
+		Assert.assertNull(pf.createBodyRange(new RangeLong(0L, 1L)));
 		
 		ByteBuffersIO out = new ByteBuffersIO(false, "Form", Task.Priority.NORMAL);
 		AsyncSupplier<Long, IOException> copy = IOUtil.copy(form.writeEntity().blockResult(0), out, -1, false, null, 0);
@@ -115,6 +119,25 @@ public class TestFormDataEntity extends LCCoreAbstractTest {
 				Assert.assertEquals(value, form2.getFields().get(0).getValue2());
 			}
 		}
+	}
+	
+	@Test
+	public void testFormDataPartFactory() throws Exception {
+		FormDataPartFactory f = new FormDataPartFactory();
+		try {
+			f.create(null, new MimeHeaders());
+			throw new AssertionError();
+		} catch (MimeException e) {}
+		
+		try {
+			f.create(null, new MimeHeaders().addRawValue("Content-Disposition", "wrong"));
+			throw new AssertionError();
+		} catch (MimeException e) {}
+		
+		try {
+			f.create(null, new MimeHeaders().addRawValue("Content-Disposition", "form-data"));
+			throw new AssertionError();
+		} catch (MimeException e) {}
 	}
 
 }

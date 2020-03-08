@@ -190,21 +190,16 @@ public class MultipartEntity extends MimeEntity {
 				AsyncSupplier<ByteBuffer, IOException> result = new AsyncSupplier<>();
 				body.onDone(pair -> {
 					bodyProducer = pair.getValue2();
-					bodyProducer.produce().onDone(data -> {
-						if (data != null) {
-							result.unblockSuccess(data);
-							return;
-						}
-						currentEntity = null;
-						headersSent = false;
-						boundSent = false;
-						bodyProducer = null;
-						produce().forward(result);
-					}, result);
+					produceBody(result);
 				}, result);
 				return result;
 			}
 			AsyncSupplier<ByteBuffer, IOException> result = new AsyncSupplier<>();
+			produceBody(result);
+			return result;
+		}
+		
+		private void produceBody(AsyncSupplier<ByteBuffer, IOException> result) {
 			bodyProducer.produce().onDone(data -> {
 				if (data != null) {
 					result.unblockSuccess(data);
@@ -216,7 +211,6 @@ public class MultipartEntity extends MimeEntity {
 				bodyProducer = null;
 				produce().forward(result);
 			}, result);
-			return result;
 		}
 	}
 	
@@ -284,25 +278,8 @@ public class MultipartEntity extends MimeEntity {
 		
 		private void consumeData(ByteBuffer data, Async<IOException> onDone) {
 			if (firstBoundary) {
-				Boolean found;
-				do {
-					found = searchBoundary(data);
-					if (found != null) break;
-					if (!data.hasRemaining()) {
-						onDone.unblock();
-						return;
-					}
-				} while (true);
-				if (found.booleanValue()) {
-					// final found
-					firstBoundary = false;
-					eof = true;
-					data.position(data.position() + data.remaining()); // skip any remaining data
-					onDone.unblock();
+				if (!consumeFirstBoundary(data, onDone))
 					return;
-				}
-				firstBoundary = false;
-				entityParser = new MimeEntity.Parser(entityFactory);
 			} else if (eof) {
 				data.position(data.position() + data.remaining()); // skip any remaining data
 				onDone.unblock();
@@ -317,71 +294,97 @@ public class MultipartEntity extends MimeEntity {
 				do {
 					found = searchBoundary(data);
 				} while (found == null && boundPos == 0 && data.hasRemaining());
-				if (found == null) {
-					LinkedList<ByteBuffer> buffers = new LinkedList<>();
-					if (boundPos > 0 && boundaryPos <= boundPos)
-						addMissedBuffers(boundPos, wasFinal, buffers);
-					int end = data.position() - boundaryPos;
-					if (!data.hasRemaining()) {
-						if (end - start > 0) {
-							ByteBuffer subBuffer = data.duplicate();
-							subBuffer.position(start);
-							subBuffer.limit(end);
-							buffers.add(subBuffer.asReadOnlyBuffer());
-						}
-						IAsync<IOException> push = entityParser.push(buffers);
-						push.onDone(onDone);
-						return;
-					}
+				if (found != null) {
+					boundaryFound(data, onDone, start, found.booleanValue());
+					return;
+				}
+				LinkedList<ByteBuffer> buffers = new LinkedList<>();
+				if (boundPos > 0 && boundaryPos <= boundPos)
+					addMissedBuffers(boundPos, wasFinal, buffers);
+				int end = data.position() - boundaryPos;
+				if (!data.hasRemaining()) {
 					if (end - start > 0) {
-						if (data.hasArray()) {
-							buffers.add(ByteBuffer.wrap(data.array(), data.arrayOffset() + start, end - start)
-								.asReadOnlyBuffer());
-						} else {
-							byte[] b = new byte[end - start];
-							data.position(start);
-							data.get(b);
-							data.position(end + boundaryPos);
-							buffers.add(ByteBuffer.wrap(b));
-						}
+						ByteBuffer subBuffer = data.duplicate();
+						subBuffer.position(start);
+						subBuffer.limit(end);
+						buffers.add(subBuffer.asReadOnlyBuffer());
 					}
 					IAsync<IOException> push = entityParser.push(buffers);
-					if (push.isSuccessful()) continue;
-					push.onDone(() -> consumeData(data, onDone), onDone);
+					push.onDone(onDone);
 					return;
 				}
-				int end = data.position() - (4 + boundary.length + 2);
-				if (found.booleanValue())
-					end -= 2;
 				if (end - start > 0) {
-					boolean isLast = found.booleanValue();
-					if (!data.hasRemaining()) {
-						// end of data, we can give it directly
-						ByteBuffer copy = data.duplicate();
-						copy.position(start);
-						copy.limit(end);
-						entityParser.consume(copy.asReadOnlyBuffer()).onDone(() -> endOfBody(isLast, data, onDone), onDone);
-						return;
-					}
-					// we need a sub-buffer
-					ByteBuffer subBuffer;
 					if (data.hasArray()) {
-						subBuffer = ByteBuffer.wrap(data.array(), data.arrayOffset() + start, end - start).asReadOnlyBuffer();
+						buffers.add(ByteBuffer.wrap(data.array(), data.arrayOffset() + start, end - start)
+							.asReadOnlyBuffer());
 					} else {
 						byte[] b = new byte[end - start];
-						int p = data.position();
 						data.position(start);
 						data.get(b);
-						subBuffer = ByteBuffer.wrap(b);
-						data.position(p);
+						data.position(end + boundaryPos);
+						buffers.add(ByteBuffer.wrap(b));
 					}
-					entityParser.consume(subBuffer).onDone(() -> endOfBody(isLast, data, onDone), onDone);
-					return;
 				}
-				endOfBody(found.booleanValue(), data, onDone);
+				IAsync<IOException> push = entityParser.push(buffers);
+				if (push.isSuccessful()) continue;
+				push.onDone(() -> consumeData(data, onDone), onDone);
 				return;
 			} while (data.hasRemaining());
 			onDone.unblock();
+		}
+		
+		private boolean consumeFirstBoundary(ByteBuffer data, Async<IOException> onDone) {
+			Boolean found;
+			do {
+				found = searchBoundary(data);
+				if (found != null) break;
+				if (!data.hasRemaining()) {
+					onDone.unblock();
+					return false;
+				}
+			} while (true);
+			if (found.booleanValue()) {
+				// final found
+				firstBoundary = false;
+				eof = true;
+				data.position(data.position() + data.remaining()); // skip any remaining data
+				onDone.unblock();
+				return false;
+			}
+			firstBoundary = false;
+			entityParser = new MimeEntity.Parser(entityFactory);
+			return true;
+		}
+		
+		private void boundaryFound(ByteBuffer data, Async<IOException> onDone, int start, boolean isLast) {
+			int end = data.position() - (4 + boundary.length + 2);
+			if (isLast)
+				end -= 2;
+			if (end - start > 0) {
+				if (!data.hasRemaining()) {
+					// end of data, we can give it directly
+					ByteBuffer copy = data.duplicate();
+					copy.position(start);
+					copy.limit(end);
+					entityParser.consume(copy.asReadOnlyBuffer()).onDone(() -> endOfBody(isLast, data, onDone), onDone);
+					return;
+				}
+				// we need a sub-buffer
+				ByteBuffer subBuffer;
+				if (data.hasArray()) {
+					subBuffer = ByteBuffer.wrap(data.array(), data.arrayOffset() + start, end - start).asReadOnlyBuffer();
+				} else {
+					byte[] b = new byte[end - start];
+					int p = data.position();
+					data.position(start);
+					data.get(b);
+					subBuffer = ByteBuffer.wrap(b);
+					data.position(p);
+				}
+				entityParser.consume(subBuffer).onDone(() -> endOfBody(isLast, data, onDone), onDone);
+				return;
+			}
+			endOfBody(isLast, data, onDone);
 		}
 		
 		private void endOfBody(boolean isLast, ByteBuffer data, Async<IOException> onDone) {
