@@ -178,7 +178,7 @@ public class MultipartEntity extends MimeEntity {
 			}
 			if (currentEntity == null) {
 				currentEntity = itPart.next();
-				return new AsyncSupplier<>(ByteBuffer.wrap(bound), null);
+				return new AsyncSupplier<>(ByteBuffer.wrap(bound).asReadOnlyBuffer(), null);
 			}
 			if (!headersSent) {
 				headersSent = true;

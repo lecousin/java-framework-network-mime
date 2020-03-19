@@ -309,7 +309,7 @@ public final class ChunkedTransfer {
 			sendHeader.thenDoOrStart("Send chunk of data", Task.getCurrentPriority(), () -> {
 				if (logger.trace())
 					logger.trace("Sending chunk data: " + data.remaining());
-				IAsync<IOException> sendData = sender.consume(data.duplicate());
+				IAsync<IOException> sendData = sender.consume(data);
 				sendData.onDone(result);
 			}, result);
 			return result;
