@@ -1,26 +1,13 @@
 package net.lecousin.framework.network.mime.header;
 
-import java.util.LinkedList;
-import java.util.List;
-
-import net.lecousin.framework.network.mime.MimeException;
-import net.lecousin.framework.network.mime.header.parser.SpecialCharacter;
-import net.lecousin.framework.network.mime.header.parser.Token;
-
 /**
  * Comma separated list of parameterized header values.
  */
-public class ParameterizedHeaderValues implements HeaderValueFormat {
+public class ParameterizedHeaderValues extends HeaderValues<ParameterizedHeaderValue> {
 
-	private List<ParameterizedHeaderValue> values = new LinkedList<>();
-	
-	public List<ParameterizedHeaderValue> getValues() {
-		return values;
-	}
-	
 	/** Return the value having the given main value. */
 	public ParameterizedHeaderValue getMainValue(String value) {
-		for (ParameterizedHeaderValue v : values)
+		for (ParameterizedHeaderValue v : getValues())
 			if (value.equals(v.getMainValue()))
 				return v;
 		return null;
@@ -32,25 +19,8 @@ public class ParameterizedHeaderValues implements HeaderValueFormat {
 	}
 	
 	@Override
-	public void parseTokens(List<Token> tokens) throws MimeException {
-		values.clear();
-		List<List<Token>> list = Token.splitBySpecialCharacter(tokens, ',');
-		for (List<Token> subList : list) {
-			ParameterizedHeaderValue value = new ParameterizedHeaderValue();
-			value.parseTokens(subList);
-			values.add(value);
-		}
-	}
-	
-	@Override
-	public List<Token> generateTokens() {
-		List<Token> tokens = new LinkedList<>();
-		for (ParameterizedHeaderValue value : values) {
-			if (!tokens.isEmpty())
-				tokens.add(new SpecialCharacter(','));
-			tokens.addAll(value.generateTokens());
-		}
-		return tokens;
+	protected ParameterizedHeaderValue newValue() {
+		return new ParameterizedHeaderValue();
 	}
 	
 }

@@ -16,7 +16,9 @@ import net.lecousin.framework.network.mime.header.ParameterizedHeaderValues;
  */
 public final class TransferEncodingFactory {
 
-	private TransferEncodingFactory() { /* no instance */ }
+	private TransferEncodingFactory() {
+		/* no instance */
+	}
 	
 	/** Instantiate a PartialAsyncConsumer with a ContentDecoder based on the Transfer-Encoding,
 	 * Content-Transfer-Encoding and Content-Encoding headers. */

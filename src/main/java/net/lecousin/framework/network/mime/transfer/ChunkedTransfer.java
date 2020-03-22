@@ -34,7 +34,9 @@ import net.lecousin.framework.util.DebugUtil;
  */
 public final class ChunkedTransfer {
 	
-	private ChunkedTransfer() { /* no instance. */ }
+	private ChunkedTransfer() {
+		/* no instance. */
+	}
 
 	public static final String TRANSFER_NAME = "chunked";
 	

@@ -7,7 +7,9 @@ import java.util.Map;
 @SuppressWarnings("squid:S2386") // we keep the maps public
 public final class MimeType {
 	
-	private MimeType() { /* no instance */ }
+	private MimeType() {
+		/* no instance */
+	}
 
 	public static final String HTML = "text/html";
 	public static final String XML = "text/xml";

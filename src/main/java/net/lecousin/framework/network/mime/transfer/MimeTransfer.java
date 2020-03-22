@@ -23,7 +23,9 @@ import net.lecousin.framework.util.Pair;
 /** Transfer a MIME. */
 public final class MimeTransfer {
 
-	private MimeTransfer() { /* no instance. */ }
+	private MimeTransfer() {
+		/* no instance. */
+	}
 	
 	private static final String TRANSFER_TASK_NAME = "Transfer MIME body";
 	

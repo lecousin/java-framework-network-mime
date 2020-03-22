@@ -8,7 +8,9 @@ import net.lecousin.framework.util.Pair;
 /** Parser. */
 public final class MimeHeaderValueParser {
 
-	private MimeHeaderValueParser() { /* no instance */ }
+	private MimeHeaderValueParser() {
+		/* no instance */
+	}
 	
 	/** Parse. */
 	public static List<Token> parse(String value) {

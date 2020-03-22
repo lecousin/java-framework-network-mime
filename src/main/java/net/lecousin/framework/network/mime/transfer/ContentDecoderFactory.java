@@ -26,7 +26,9 @@ import net.lecousin.framework.network.mime.header.MimeHeaders;
  */
 public final class ContentDecoderFactory {
 	
-	private ContentDecoderFactory() { /* no instance */ }
+	private ContentDecoderFactory() {
+		/* no instance */
+	}
 
 	private static Map<String, UnaryOperator<AsyncConsumer<ByteBuffer, IOException>>> decoders = new HashMap<>();
 	

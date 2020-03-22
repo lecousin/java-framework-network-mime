@@ -17,7 +17,9 @@ import net.lecousin.framework.network.mime.header.MimeHeaders;
  */
 public final class IdentityTransfer {
 	
-	private IdentityTransfer() { /* no instance */ }
+	private IdentityTransfer() {
+		/* no instance */
+	}
 	
 	public static final String TRANSFER_NAME = "identity";
 	

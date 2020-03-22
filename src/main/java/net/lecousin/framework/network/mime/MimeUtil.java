@@ -16,7 +16,9 @@ import net.lecousin.framework.text.CharArrayStringBuffer;
 /** Utility methods for MIME Messages. */
 public final class MimeUtil {
 	
-	private MimeUtil() { /* no instance */ }
+	private MimeUtil() {
+		/* no instance */
+	}
 	
 	/** Decode a header content using RFC 2047, which specifies encoded word as follows:
 	 * encoded-word = "=?" charset "?" encoding "?" encoded-text "?=".
@@ -71,15 +73,48 @@ public final class MimeUtil {
 		}
 	}
 	
+	/** Return true if the given byte is a valid token character according
+	 * to <a href="https://tools.ietf.org/html/rfc7230#section-3.2.6">RFC 7230</a>.
+	 */
+	public static boolean isValidTokenCharacter(byte c) {
+		if (c < 0x21)
+			return false;
+		if (c > 0x5D) {
+			if (c < 0x7B)
+				return true;
+			return c == 0x7C || c == 0x7E;
+		}
+		if (c > 0x40)
+			return c < 0x5B;
+		if (c > 0x2F)
+			return c < 0x3A;
+		if (c < 0x28)
+			return c != 0x22;
+		return c == 0x2A || c == 0x2B || c == 0x2D || c == 0x2E;
+	}
+	
+	/** Encode a string into a token, which may need double quote according to
+	 * <a href="https://tools.ietf.org/html/rfc7230#section-3.2.6">RFC 7230</a>.
+	 */
+	public static String encodeToken(String value) {
+		for (int i = value.length() - 1; i >= 0; i--)
+			if (!isValidTokenCharacter((byte)value.charAt(i))) {
+				return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+			}
+		return value;
+	}
+	
 	/** Encode a header parameter value, taking bytes in the given charset,
 	 * and depending on its content it may be directly returned,
-	 * it may use double-quote or it may use the RFC 2047 encoding. */
+	 * it may use double-quote if needed
+	 * or it may use the RFC 2047 encoding. */
 	public static String encodeHeaderValue(String value, Charset charset) {
 		byte[] bytes = value.getBytes(charset);
 		boolean hasSpecialChars = false;
 		boolean needsQuote = false;
 		for (int i = 0; i < bytes.length; ++i) {
-			if (bytes[i] == ' ' || bytes[i] == '\t' || bytes[i] == '"' || bytes[i] == '=')
+			if (!needsQuote && 
+				(bytes[i] == ' ' || bytes[i] == '\t' || bytes[i] == '"' || bytes[i] == '='))
 				needsQuote = true;
 			if (bytes[i] < 32 || bytes[i] > 126) {
 				hasSpecialChars = true;
