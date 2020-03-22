@@ -5,13 +5,17 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
 import java.util.Arrays;
 import java.util.zip.Deflater;
 
 import net.lecousin.compression.gzip.GZipWritable;
 import net.lecousin.framework.application.LCCore;
 import net.lecousin.framework.concurrent.CancelException;
+import net.lecousin.framework.concurrent.async.Async;
+import net.lecousin.framework.concurrent.async.IAsync;
 import net.lecousin.framework.concurrent.threads.Task;
+import net.lecousin.framework.concurrent.util.AsyncConsumer;
 import net.lecousin.framework.encoding.Base64Encoding;
 import net.lecousin.framework.encoding.QuotedPrintable;
 import net.lecousin.framework.io.FileIO;
@@ -30,9 +34,6 @@ import net.lecousin.framework.network.mime.entity.DefaultMimeEntityFactory;
 import net.lecousin.framework.network.mime.entity.MimeEntity;
 import net.lecousin.framework.network.mime.header.MimeHeader;
 import net.lecousin.framework.network.mime.header.MimeHeaders;
-import net.lecousin.framework.network.mime.transfer.ChunkedTransfer;
-import net.lecousin.framework.network.mime.transfer.IdentityTransfer;
-import net.lecousin.framework.network.mime.transfer.MimeTransfer;
 import net.lecousin.framework.network.server.TCPServer;
 import net.lecousin.framework.network.test.AbstractNetworkTest;
 
@@ -71,12 +72,14 @@ public class TestTransfer extends AbstractNetworkTest {
 	
 	private TCPServer server;
 	private SocketAddress serverAddress;
+	private TestTransferProtocol protocol;
 	private TCPClient client;
 	
 	@Before
 	public void startServerAndClient() throws IOException, CancelException {
 		server = new TCPServer();
-		server.setProtocol(new TestTransferProtocol());
+		protocol = new TestTransferProtocol();
+		server.setProtocol(protocol);
 		serverAddress = server.bind(new InetSocketAddress("localhost", 0), 0).blockResult(0);
 		client = new TCPClient();
 		client.connect(serverAddress, 10000).blockThrow(0);
@@ -90,6 +93,7 @@ public class TestTransfer extends AbstractNetworkTest {
 	
 	@Test
 	public void testIdentityTransferBuffered() throws Exception {
+		protocol.useIdentity = true;
 		BinaryEntity mime = new BinaryEntity(new ByteArrayIO(data, "test"));
 		mime.getHeaders().setRawValue("X-Test", "Hello World");
 		MimeTransfer.transfer(mime, null, client.asConsumer(3, 5000)).blockThrow(0);
@@ -143,6 +147,92 @@ public class TestTransfer extends AbstractNetworkTest {
 		} catch (IOException e) {}
 	}
 	
+	@Test
+	public void testIdentityWithClientError() throws Exception {
+		protocol.useIdentity = true;
+		BinaryEntity mime = new BinaryEntity(new ByteArrayIO(data, "test"));
+		mime.getHeaders().setRawValue("X-Test", "Hello World");
+		MimeTransfer.transfer(mime, null, client.asConsumer(3, 5000)).blockThrow(0);
+		
+		MimeEntity.Transfer receiver = new MimeEntity.Transfer(DefaultMimeEntityFactory.getInstance());
+		client.close();
+		try {
+			client.getReceiver().consume(receiver, 16384, 10000).blockThrow(0);
+			throw new AssertionError();
+		} catch (ClosedChannelException e) {
+			// ok
+		}
+	}
+	
+	@Test
+	public void testIdentityWithErrorInConsumer() throws Exception {
+		protocol.useIdentity = true;
+		BinaryEntity mime = new BinaryEntity(new ByteArrayIO(data, "test"));
+		mime.getHeaders().setRawValue("X-Test", "Hello World");
+		MimeTransfer.transfer(mime, null, client.asConsumer(3, 5000)).blockThrow(0);
+		MimeEntity.Transfer receiver = new MimeEntity.Transfer((parent, headers) -> new BinaryEntity(parent, headers) {
+			@Override
+			public AsyncConsumer<ByteBuffer, IOException> createConsumer(Long size) {
+				return new AsyncConsumer<ByteBuffer, IOException>() {
+
+					@Override
+					public IAsync<IOException> consume(ByteBuffer data) {
+						return new Async<>(new IOException());
+					}
+
+					@Override
+					public IAsync<IOException> end() {
+						return new Async<>(new IOException());
+					}
+
+					@Override
+					public void error(IOException error) {
+					}
+				};
+			}
+		});
+		try {
+			client.getReceiver().consume(receiver, 16384, 10000).blockThrow(0);
+			throw new AssertionError();
+		} catch (IOException e) {
+			// ok
+		}
+	}
+	
+	
+	@Test
+	public void testChunkedWithErrorInConsumer() throws Exception {
+		BinaryEntity mime = new BinaryEntity(new ByteArrayIO(data, "test"));
+		mime.getHeaders().setRawValue("X-Test", "Hello World");
+		MimeTransfer.transfer(mime, null, client.asConsumer(3, 5000)).blockThrow(0);
+		MimeEntity.Transfer receiver = new MimeEntity.Transfer((parent, headers) -> new BinaryEntity(parent, headers) {
+			@Override
+			public AsyncConsumer<ByteBuffer, IOException> createConsumer(Long size) {
+				return new AsyncConsumer<ByteBuffer, IOException>() {
+
+					@Override
+					public IAsync<IOException> consume(ByteBuffer data) {
+						return new Async<>(new IOException());
+					}
+
+					@Override
+					public IAsync<IOException> end() {
+						return new Async<>(new IOException());
+					}
+
+					@Override
+					public void error(IOException error) {
+					}
+				};
+			}
+		});
+		try {
+			client.getReceiver().consume(receiver, 16384, 10000).blockThrow(0);
+			throw new AssertionError();
+		} catch (IOException e) {
+			// ok
+		}
+	}
 	
 	@Test
 	public void testChunkedTransferBuffered() throws Exception {

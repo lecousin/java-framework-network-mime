@@ -1,18 +1,23 @@
 package net.lecousin.framework.network.mime.transfer;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 
 import net.lecousin.framework.application.LCCore;
+import net.lecousin.framework.io.IO;
+import net.lecousin.framework.io.IOUtil;
+import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.network.mime.entity.BinaryEntity;
 import net.lecousin.framework.network.mime.entity.MimeEntity;
 import net.lecousin.framework.network.mime.header.MimeHeaders;
-import net.lecousin.framework.network.mime.transfer.MimeTransfer;
 import net.lecousin.framework.network.server.TCPServerClient;
 import net.lecousin.framework.network.server.protocol.ServerProtocol;
 
 public class TestTransferProtocol implements ServerProtocol {
 
+	public boolean useIdentity = false;
+	
 	@Override
 	public int startProtocol(TCPServerClient client) {
 		return 15000;
@@ -38,7 +43,13 @@ public class TestTransferProtocol implements ServerProtocol {
 				return;
 			}
 			MimeEntity.Transfer mp = (MimeEntity.Transfer)client.removeAttribute("mime_parser");
-			answerToClient(client, (BinaryEntity)mp.getEntity());
+			try {
+				answerToClient(client, (BinaryEntity)mp.getEntity());
+			} catch (Exception e) {
+				e.printStackTrace();
+				client.close();
+				return;
+			}
 			if (!data.hasRemaining()) {
 				try { client.waitForData(15000); }
 				catch (ClosedChannelException e) {}
@@ -53,9 +64,15 @@ public class TestTransferProtocol implements ServerProtocol {
 		});
 	}
 	
-	private static void answerToClient(TCPServerClient client, BinaryEntity entity) {
+	private void answerToClient(TCPServerClient client, BinaryEntity entity) throws IOException {
 		LCCore.getApplication().getDefaultLogger().info("Body received, answer to client");
-		BinaryEntity answer = new BinaryEntity(entity.getContent());
+		IO.Readable content = entity.getContent();
+		if (useIdentity) {
+			ByteBuffer b = ByteBuffer.allocate(65536);
+			int nb = IOUtil.readFully(content, b);
+			content = new ByteArrayIO(b.array(), nb, "test");
+		}
+		BinaryEntity answer = new BinaryEntity(content);
 		String s = entity.getHeaders().getFirstRawValue(MimeHeaders.TRANSFER_ENCODING);
 		if (s != null)
 			answer.getHeaders().setRawValue(MimeHeaders.TRANSFER_ENCODING, s);

@@ -32,6 +32,7 @@ public final class MimeUtil {
 				int j = value.indexOf('"', i2 + 1);
 				if (j > 0) {
 					value = value.substring(0, i2) + value.substring(i2 + 1, j) + value.substring(j + 1);
+					pos = j - 1;
 					continue;
 				}
 			}
@@ -116,7 +117,7 @@ public final class MimeUtil {
 			if (!needsQuote && 
 				(bytes[i] == ' ' || bytes[i] == '\t' || bytes[i] == '"' || bytes[i] == '='))
 				needsQuote = true;
-			if (bytes[i] < 32 || bytes[i] > 126) {
+			if ((bytes[i] < 32 && bytes[i] != '\t') || bytes[i] > 126) {
 				hasSpecialChars = true;
 				break;
 			}

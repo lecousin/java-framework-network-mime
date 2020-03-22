@@ -1,5 +1,8 @@
 package net.lecousin.framework.network.mime;
 
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
+
 import net.lecousin.framework.core.test.LCCoreAbstractTest;
 
 import org.junit.Assert;
@@ -26,6 +29,38 @@ public class TestMimeUtil extends LCCoreAbstractTest {
 		Assert.assertEquals("Test-15", MimeUtil.encodeToken("Test-15"));
 		Assert.assertEquals("Test.16", MimeUtil.encodeToken("Test.16"));
 		Assert.assertEquals("\"test,17\"", MimeUtil.encodeToken("test,17"));
+	}
+	
+	@Test
+	public void testDecodeRFC2047() throws Exception {
+		Assert.assertEquals("", MimeUtil.decodeRFC2047(""));
+		Assert.assertEquals("test", MimeUtil.decodeRFC2047("test"));
+		Assert.assertEquals("test hello world", MimeUtil.decodeRFC2047("test =?utf-8?Q?hello?= world"));
+		Assert.assertEquals("test hello world", MimeUtil.decodeRFC2047("t\"est \"=?utf-8?Q?hello?= world"));
+		Assert.assertEquals("test =?utf-8?Q?hello?= world", MimeUtil.decodeRFC2047("test \"=?utf-8?Q?hello?= wor\"ld"));
+		Assert.assertEquals("test =?utf-8?Q?hello?= wor\"ld", MimeUtil.decodeRFC2047("test \"=?utf-8?Q?hello?= wor\"\"ld"));
+		Assert.assertEquals("test", MimeUtil.decodeRFC2047("te\"st\""));
+		Assert.assertEquals("test=?", MimeUtil.decodeRFC2047("test=?"));
+		Assert.assertEquals("test hello world", MimeUtil.decodeRFC2047("test =?utf-8?Q?hello?= \"world\""));
+		Assert.assertEquals("test", MimeUtil.decodeRFC2047("test=??="));
+		Assert.assertEquals("test", MimeUtil.decodeRFC2047("test=???="));
+		Assert.assertEquals("test", MimeUtil.decodeRFC2047("test=?utf-8?B??="));
+		try {
+			MimeUtil.decodeRFC2047("test=?utf-8?x??=");
+			throw new AssertionError();
+		} catch (UnsupportedEncodingException e) {
+			// ok
+		}
+	}
+	
+	@Test
+	public void testEncodeHeaderValue() {
+		Assert.assertEquals("test", MimeUtil.encodeHeaderValue("test", StandardCharsets.UTF_8));
+		Assert.assertEquals("\"hello world\"", MimeUtil.encodeHeaderValue("hello world", StandardCharsets.UTF_8));
+		Assert.assertEquals("\"hello\tworld\"", MimeUtil.encodeHeaderValue("hello\tworld", StandardCharsets.UTF_8));
+		Assert.assertEquals("\"hello\\\"world\"", MimeUtil.encodeHeaderValue("hello\"world", StandardCharsets.UTF_8));
+		Assert.assertEquals("\"hello=world\"", MimeUtil.encodeHeaderValueWithUTF8("hello=world"));
+		Assert.assertEquals("=?UTF-8?B?5q+U6LyD44Gu44Go44GN77yM5aSn5paH5a2X44Go5bCP5paH5a2X44Gu5ZCM5LiA6KaW?=", MimeUtil.encodeHeaderValue("比較のとき，大文字と小文字の同一視", StandardCharsets.UTF_8));
 	}
 	
 }
