@@ -11,6 +11,7 @@ import net.lecousin.framework.concurrent.threads.Task.Priority;
 import net.lecousin.framework.concurrent.util.AsyncConsumer;
 import net.lecousin.framework.concurrent.util.AsyncProducer;
 import net.lecousin.framework.io.IO;
+import net.lecousin.framework.io.IO.Seekable.SeekType;
 import net.lecousin.framework.io.SubIO;
 import net.lecousin.framework.io.buffering.ByteArrayIO;
 import net.lecousin.framework.io.buffering.IOInMemoryOrFile;
@@ -76,13 +77,33 @@ public class BinaryEntity extends MimeEntity implements AutoCloseable, AsyncClos
 	@Override
 	public AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> createBodyProducer() {
 		AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> result = new AsyncSupplier<>();
-		if (content instanceof IO.KnownSize) {
-			((IO.KnownSize)content).getSizeAsync().onDone(
-				size -> result.unblockSuccess(new Pair<>(size, content.createProducer(false))), result);
-		} else {
-			result.unblockSuccess(new Pair<>(null, content.createProducer(false)));
-		}
+		createBodyProducerGetSize(result);
 		return result;
+	}
+	
+	private void createBodyProducerGetSize(AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> result) {
+		if (content instanceof IO.KnownSize)
+			((IO.KnownSize)content).getSizeAsync().onDone(size -> createBodyProducerSeekBeginning(result, size));
+		else
+			createBodyProducerSeekBeginning(result, null);
+	}
+	
+	private void createBodyProducerSeekBeginning(
+		AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> result, Long size
+	) {
+		if (content instanceof IO.Readable.Seekable)
+			((IO.Readable.Seekable)content).seekAsync(SeekType.FROM_BEGINNING, 0).onDone(() -> createBodyProducerDone(result, size));
+		else
+			createBodyProducerDone(result, size);
+	}
+
+	private void createBodyProducerDone(AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> result, Long size) {
+		result.unblockSuccess(new Pair<>(size, content.createProducer(false)));
+	}
+	
+	@Override
+	public boolean canProduceBodyMultipleTimes() {
+		return content instanceof IO.Readable.Seekable;
 	}
 	
 	@Override

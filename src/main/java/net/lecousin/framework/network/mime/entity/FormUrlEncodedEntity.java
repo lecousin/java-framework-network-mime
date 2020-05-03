@@ -69,6 +69,11 @@ public class FormUrlEncodedEntity extends MimeEntity {
 				return p.getValue2();
 		return null;
 	}
+	
+	@Override
+	public boolean canProduceBodyMultipleTimes() {
+		return true;
+	}
 
 	@Override
 	public AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> createBodyProducer() {

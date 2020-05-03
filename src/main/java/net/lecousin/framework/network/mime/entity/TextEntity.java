@@ -79,6 +79,11 @@ public class TextEntity extends MimeEntity {
 	}
 	
 	@Override
+	public boolean canProduceBodyMultipleTimes() {
+		return true;
+	}
+	
+	@Override
 	public AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> createBodyProducer() {
 		byte[] body = text.getBytes(charset);
 		return new AsyncSupplier<>(new Pair<>(Long.valueOf(body.length), new AsyncProducer.SingleData<>(ByteBuffer.wrap(body))), null);

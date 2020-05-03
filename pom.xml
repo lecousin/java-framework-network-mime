@@ -8,7 +8,7 @@
 
   <groupId>net.lecousin.framework.network</groupId>
   <artifactId>mime</artifactId>
-  <version>0.5.2</version>
+  <version>0.6.0-SNAPSHOT</version>
   
   <name>lecousin.net Java framework - MIME</name>
   <description>MIME messages functionalities</description>
@@ -46,12 +46,21 @@
       <url>https://oss.sonatype.org/content/repositories/snapshots</url>
     </snapshotRepository>
   </distributionManagement>
+  
+  <repositories>
+    <repository>
+      <id>ossrh</id>
+      <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+      <snapshots><enabled>true</enabled></snapshots>
+      <releases><enabled>false</enabled></releases>
+    </repository>
+  </repositories>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <sonar.test.exclusions>**/src/test/**/*</sonar.test.exclusions>
-    <core.version>0.20.4</core.version>
-    <network.core.version>0.7.2</network.core.version>
+    <core.version>0.21.0-SNAPSHOT</core.version>
+    <network.core.version>0.9.0-SNAPSHOT</network.core.version>
     <compression.version>0.1.10</compression.version>
   </properties>
 

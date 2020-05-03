@@ -138,6 +138,14 @@ public class MultipartEntity extends MimeEntity {
 	}
 	
 	@Override
+	public boolean canProduceBodyMultipleTimes() {
+		for (MimeEntity part : parts)
+			if (!part.canProduceBodyMultipleTimes())
+				return false;
+		return true;
+	}
+	
+	@Override
 	public AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> createBodyProducer() {
 		return new AsyncSupplier<>(new Pair<>(null, new BodyProducer()), null);
 	}

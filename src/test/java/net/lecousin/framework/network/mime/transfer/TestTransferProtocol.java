@@ -24,7 +24,7 @@ public class TestTransferProtocol implements ServerProtocol {
 	}
 
 	@Override
-	public int getInputBufferSize() {
+	public int getInputBufferSize(TCPServerClient client) {
 		return 8192;
 	}
 

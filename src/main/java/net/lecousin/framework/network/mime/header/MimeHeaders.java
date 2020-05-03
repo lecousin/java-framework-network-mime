@@ -246,11 +246,11 @@ public class MimeHeaders {
 						if (name != null) {
 							MimeHeader h = new MimeHeader(name.asString(), value.trim().asString());
 							headers.add(h);
-							if (logger.debug())
-								logger.debug("Header line found: " + h.getName() + ": " + h.getRawValue());
+							if (logger.trace())
+								logger.trace("Header line found: " + h.getName() + ": " + h.getRawValue());
 						}
-						if (logger.debug())
-							logger.debug("End of headers");
+						if (logger.trace())
+							logger.trace("End of headers");
 						end = true;
 						return;
 					case ':':
@@ -264,8 +264,8 @@ public class MimeHeaders {
 						if (name != null) {
 							MimeHeader h = new MimeHeader(name.asString(), value.trim().asString());
 							headers.add(h);
-							if (logger.debug())
-								logger.debug("Header line found: " + h.getName() + ": " + h.getRawValue());
+							if (logger.trace())
+								logger.trace("Header line found: " + h.getName() + ": " + h.getRawValue());
 						}
 						name = new CharArrayString(32);
 						name.append((char)(b & 0xFF));

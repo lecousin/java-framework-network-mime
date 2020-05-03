@@ -118,6 +118,11 @@ public class FormDataEntity extends MultipartEntity implements AutoCloseable, As
 		public String getValue() { return value; }
 		
 		@Override
+		public boolean canProduceBodyMultipleTimes() {
+			return true;
+		}
+		
+		@Override
 		public boolean canProduceBodyRange() {
 			return false;
 		}
@@ -181,10 +186,14 @@ public class FormDataEntity extends MultipartEntity implements AutoCloseable, As
 		
 		@Override
 		public AsyncConsumer<ByteBuffer, IOException> createConsumer(Long size) {
-			return ContentDecoderFactory.createDecoder(
-				CharacterDecoder.get(charset, 1024).<IOException>decodeConsumerToString(str -> value = str)
-					.convert(ByteArray::fromByteBuffer),
-				headers);
+			try {
+				return ContentDecoderFactory.createDecoder(
+					CharacterDecoder.get(charset, 1024).<IOException>decodeConsumerToString(str -> value = str)
+						.convert(ByteArray::fromByteBuffer),
+					headers);
+			} catch (MimeException e) {
+				return new AsyncConsumer.Error<ByteBuffer, IOException>(IO.error(e));
+			}
 		}
 	}
 	

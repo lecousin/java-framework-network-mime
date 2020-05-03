@@ -37,6 +37,11 @@ public class EmptyEntity extends MimeEntity {
 	}
 	
 	@Override
+	public boolean canProduceBodyMultipleTimes() {
+		return true;
+	}
+
+	@Override
 	public boolean canProduceBodyRange() {
 		return true;
 	}

@@ -3,9 +3,12 @@ package net.lecousin.framework.network.mime.transfer;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
+import java.util.List;
 
 import net.lecousin.framework.concurrent.util.AsyncConsumer;
 import net.lecousin.framework.concurrent.util.PartialAsyncConsumer;
+import net.lecousin.framework.network.mime.MimeException;
+import net.lecousin.framework.network.mime.header.MimeHeader;
 import net.lecousin.framework.network.mime.header.MimeHeaders;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValue;
 import net.lecousin.framework.network.mime.header.ParameterizedHeaderValues;
@@ -21,9 +24,11 @@ public final class TransferEncodingFactory {
 	}
 	
 	/** Instantiate a PartialAsyncConsumer with a ContentDecoder based on the Transfer-Encoding,
-	 * Content-Transfer-Encoding and Content-Encoding headers. */
+	 * Content-Transfer-Encoding and Content-Encoding headers. 
+	 * @throws MimeException if headers are invalid
+	 */
 	public static PartialAsyncConsumer<ByteBuffer, IOException>
-	create(MimeHeaders headers, AsyncConsumer<ByteBuffer, IOException> consumer) throws IOException {
+	create(MimeHeaders headers, AsyncConsumer<ByteBuffer, IOException> consumer) throws IOException, MimeException {
 		String transfer = IdentityTransfer.TRANSFER_NAME;
 		LinkedList<String> encoding = new LinkedList<>();
 
@@ -40,9 +45,12 @@ public final class TransferEncodingFactory {
 		return new IdentityTransfer.Receiver(headers, decoder);
 	}
 	
-	/** Add encoding from the given MIME header, remove and return any value which is a transfer. */
+	/** Add encoding from the given MIME header, remove and return any value which is a transfer. 
+	 * @throws MimeException if headers are invalid
+	 */
 	@SuppressWarnings("java:S1319") // we want LinkedList
-	public static String encodingAndTransferFromHeader(MimeHeaders headers, String headerName, LinkedList<String> encoding, String defaultValue) {
+	public static String encodingAndTransferFromHeader(MimeHeaders headers, String headerName, LinkedList<String> encoding, String defaultValue)
+	throws MimeException {
 		if (!addEncodingFromHeader(headers, headerName, encoding))
 			return defaultValue;
 		String s = encoding.getLast();
@@ -55,13 +63,17 @@ public final class TransferEncodingFactory {
 		return defaultValue;
 	}
 	
-	/** Add encoding from the given MIME header. */
+	/** Add encoding from the given MIME header. 
+	 * @throws MimeException if headers are invalid
+	 */
 	@SuppressWarnings("java:S1319") // we want LinkedList
-	public static boolean addEncodingFromHeader(MimeHeaders headers, String headerName, LinkedList<String> encoding) {
-		ParameterizedHeaderValues values;
-		try { values = headers.getFirstValue(headerName, ParameterizedHeaderValues.class); }
-		catch (Exception e) { values = null; }
-		if (values == null) return false;
+	public static boolean addEncodingFromHeader(MimeHeaders headers, String headerName, LinkedList<String> encoding) throws MimeException {
+		List<MimeHeader> list = headers.getList(headerName);
+		if (list.isEmpty())
+			return false;
+		if (list.size() > 1)
+			throw new MimeException("Header " + headerName + " must be set once, found: " + list.size());
+		ParameterizedHeaderValues values = list.get(0).getValue(ParameterizedHeaderValues.class);
 		boolean changed = false;
 		for (ParameterizedHeaderValue value : values.getValues()) {
 			String e = value.getMainValue();

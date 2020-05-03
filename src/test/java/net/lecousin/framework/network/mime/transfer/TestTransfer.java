@@ -16,6 +16,7 @@ import net.lecousin.framework.concurrent.async.Async;
 import net.lecousin.framework.concurrent.async.IAsync;
 import net.lecousin.framework.concurrent.threads.Task;
 import net.lecousin.framework.concurrent.util.AsyncConsumer;
+import net.lecousin.framework.core.test.runners.LCSequentialRunner;
 import net.lecousin.framework.encoding.Base64Encoding;
 import net.lecousin.framework.encoding.QuotedPrintable;
 import net.lecousin.framework.io.FileIO;
@@ -44,9 +45,8 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.junit.runners.BlockJUnit4ClassRunner;
 
-@RunWith(BlockJUnit4ClassRunner.class)
+@RunWith(LCSequentialRunner.class)
 public class TestTransfer extends AbstractNetworkTest {
 
 	private static byte[] data;

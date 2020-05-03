@@ -18,6 +18,7 @@ import net.lecousin.framework.encoding.QuotedPrintable;
 import net.lecousin.framework.io.data.ByteArray;
 import net.lecousin.framework.io.data.Bytes;
 import net.lecousin.framework.log.Logger;
+import net.lecousin.framework.network.mime.MimeException;
 import net.lecousin.framework.network.mime.header.MimeHeaders;
 
 /**
@@ -91,8 +92,11 @@ public final class ContentDecoderFactory {
 		return supplier.apply(next);
 	}
 
-	/** Create a ContentDecoder for the Content-Encoding or Content-Transfer-Encoding field of the given MIME. */
-	public static AsyncConsumer<ByteBuffer, IOException> createDecoder(AsyncConsumer<ByteBuffer, IOException> consumer, MimeHeaders headers) {
+	/** Create a ContentDecoder for the Content-Encoding or Content-Transfer-Encoding field of the given MIME. 
+	 * @throws MimeException if headers are invalid
+	 */
+	public static AsyncConsumer<ByteBuffer, IOException> createDecoder(AsyncConsumer<ByteBuffer, IOException> consumer, MimeHeaders headers)
+	throws MimeException {
 		LinkedList<String> encoding = new LinkedList<>();
 		
 		TransferEncodingFactory.encodingAndTransferFromHeader(headers, MimeHeaders.CONTENT_TRANSFER_ENCODING, encoding, null);

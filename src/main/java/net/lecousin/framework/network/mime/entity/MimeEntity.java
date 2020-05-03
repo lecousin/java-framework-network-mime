@@ -60,6 +60,9 @@ public abstract class MimeEntity implements MimeHeadersContainer<MimeEntity> {
 	 */
 	public abstract AsyncSupplier<Pair<Long, AsyncProducer<ByteBuffer, IOException>>, IOException> createBodyProducer();
 	
+	/** Return true if the method createBodyProducer can be called several times. */
+	public abstract boolean canProduceBodyMultipleTimes();
+	
 	/** Return true if this entity is able to extract a range of the body. */
 	public abstract boolean canProduceBodyRange();
 	
@@ -195,7 +198,11 @@ public abstract class MimeEntity implements MimeHeadersContainer<MimeEntity> {
 		@Override
 		protected void endOfHeaders() throws IOException {
 			super.endOfHeaders();
-			bodyConsumer = ContentDecoderFactory.createDecoder(bodyConsumer, entity.getHeaders());
+			try {
+				bodyConsumer = ContentDecoderFactory.createDecoder(bodyConsumer, entity.getHeaders());
+			} catch (MimeException e) {
+				throw IO.error(e);
+			}
 		}
 		
 		@Override
@@ -242,7 +249,11 @@ public abstract class MimeEntity implements MimeHeadersContainer<MimeEntity> {
 		@Override
 		protected void endOfHeaders() throws IOException {
 			super.endOfHeaders();
-			transfer = TransferEncodingFactory.create(entity.getHeaders(), bodyConsumer);
+			try {
+				transfer = TransferEncodingFactory.create(entity.getHeaders(), bodyConsumer);
+			} catch (MimeException e) {
+				throw IO.error(e);
+			}
 		}
 		
 		@Override

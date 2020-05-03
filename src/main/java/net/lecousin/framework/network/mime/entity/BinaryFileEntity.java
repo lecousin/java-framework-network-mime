@@ -68,6 +68,11 @@ public class BinaryFileEntity extends MimeEntity implements AutoCloseable, Async
 	}
 	
 	@Override
+	public boolean canProduceBodyMultipleTimes() {
+		return true;
+	}
+	
+	@Override
 	public boolean canProduceBodyRange() {
 		return true;
 	}
